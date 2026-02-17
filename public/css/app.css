@@ -151,6 +151,15 @@ html, body {
 #connection-status.connected { background: var(--green); }
 #connection-status.connecting { background: var(--orange); }
 
+#ding-toggle {
+  font-size: 16px;
+  opacity: 0.9;
+  transition: opacity 0.2s;
+}
+#ding-toggle.ding-off {
+  opacity: 0.3;
+}
+
 .header-btn {
   background: none;
   border: none;

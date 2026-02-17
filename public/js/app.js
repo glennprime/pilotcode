@@ -87,6 +87,7 @@ function showApp() {
 
   // Input handling
   setupInput();
+  initDingToggle();
 }
 
 function setupInput() {
@@ -224,7 +225,26 @@ function handleStatus(status) {
 }
 
 // Notification ding when Claude finishes
+let dingEnabled = localStorage.getItem('pilotcode_ding') !== 'off';
+
+function initDingToggle() {
+  const btn = document.getElementById('ding-toggle');
+  updateDingButton(btn);
+  btn.onclick = () => {
+    dingEnabled = !dingEnabled;
+    localStorage.setItem('pilotcode_ding', dingEnabled ? 'on' : 'off');
+    updateDingButton(btn);
+  };
+}
+
+function updateDingButton(btn) {
+  btn.classList.toggle('ding-on', dingEnabled);
+  btn.classList.toggle('ding-off', !dingEnabled);
+  btn.title = dingEnabled ? 'Sound: ON' : 'Sound: OFF';
+}
+
 function playDing() {
+  if (!dingEnabled) return;
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = ctx.createOscillator();
