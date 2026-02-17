@@ -1,8 +1,12 @@
 #!/bin/bash
 # Start PilotCode server + Cloudflare Named Tunnel
-# Accessible at https://pilotcode.bantuary.com
+# Configure TUNNEL_NAME to match your cloudflared tunnel
 
-cd /Users/glennprime/Dev/pilotcode
+TUNNEL_NAME="${CLOUDFLARE_TUNNEL:-pilotcode}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_DIR"
 
 echo "Starting PilotCode server..."
 npx tsx src/server.ts &
@@ -10,15 +14,10 @@ SERVER_PID=$!
 sleep 3
 
 echo ""
-echo "Starting Cloudflare Tunnel (pilotcode)..."
-echo ""
-echo "  ======================================"
-echo "  PilotCode will be live at:"
-echo "  https://pilotcode.bantuary.com"
-echo "  ======================================"
+echo "Starting Cloudflare Tunnel ($TUNNEL_NAME)..."
 echo ""
 
-cloudflared tunnel run pilotcode 2>&1
+cloudflared tunnel run "$TUNNEL_NAME" 2>&1
 
 # Cleanup on exit
 kill $SERVER_PID 2>/dev/null

@@ -131,7 +131,7 @@ export class SessionUI {
   showNewSessionModal() {
     this.modal.classList.add('active');
     document.getElementById('session-name-input').value = '';
-    document.getElementById('session-cwd-input').value = '/Users/glennprime/Dev';
+    document.getElementById('session-cwd-input').value = '';
     document.getElementById('session-name-input').focus();
   }
 
