@@ -28,10 +28,11 @@ router.post('/api/auth', (req: Request, res: Response) => {
     return;
   }
 
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
   res.cookie('pilotcode_token', token, {
     httpOnly: true,
-    secure: true,
-    sameSite: 'strict',
+    secure: isSecure,
+    sameSite: isSecure ? 'strict' : 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 

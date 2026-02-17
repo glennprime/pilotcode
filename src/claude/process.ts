@@ -76,8 +76,13 @@ export class ClaudeProcess extends EventEmitter {
   }
 
   write(msg: StdinMessage): void {
-    if (!this.child?.stdin?.writable) return;
-    this.child.stdin.write(JSON.stringify(msg) + '\n');
+    if (!this.child?.stdin?.writable) {
+      console.error('[claude] stdin not writable, dropping message:', msg.type);
+      return;
+    }
+    const line = JSON.stringify(msg) + '\n';
+    console.log('[claude] writing to stdin:', msg.type, 'request_id' in msg ? (msg as any).response?.request_id : '');
+    this.child.stdin.write(line);
   }
 
   sendMessage(content: string | ContentBlock[]): void {
@@ -129,6 +134,8 @@ export class ClaudeProcess extends EventEmitter {
         .filter((p) => !p.toLowerCase().startsWith(cwd.toLowerCase()))
         .join(':');
     }
+    // Allow spawning Claude from within another Claude session
+    delete env.CLAUDECODE;
     return env;
   }
 }

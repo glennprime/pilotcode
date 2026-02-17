@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pilotcode-v1';
+const CACHE_NAME = 'pilotcode-v3';
 const ASSETS = [
   '/',
   '/index.html',
@@ -30,10 +30,10 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Network-first for API calls and WebSocket
-  if (e.request.url.includes('/api/') || e.request.url.includes('/ws')) {
-    return;
-  }
+  // Only handle http/https requests
+  if (!e.request.url.startsWith('http')) return;
+  // Skip API calls and WebSocket
+  if (e.request.url.includes('/api/') || e.request.url.includes('/ws')) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {

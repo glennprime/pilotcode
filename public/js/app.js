@@ -9,6 +9,8 @@ let wsClient;
 let chat;
 let sessionUI;
 let imageHandler;
+let pendingMessage = null; // queued message while waiting for session init
+let creatingSession = false;
 
 // Boot
 document.addEventListener('DOMContentLoaded', async () => {
@@ -74,9 +76,8 @@ function showApp() {
   chat = new Chat(wsClient);
 
   // Sessions
-  sessionUI = new SessionUI(wsClient, (name) => {
-    chat.clear();
-    document.getElementById('session-name').textContent = name;
+  sessionUI = new SessionUI(wsClient, (name, sessionId) => {
+    chat.switchSession(sessionId || null);
   });
 
   // Images
@@ -93,14 +94,12 @@ function setupInput() {
   const sendBtn = document.getElementById('send-btn');
   const abortBtn = document.getElementById('abort-btn');
 
-  // Auto-resize textarea
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     sendBtn.disabled = !input.value.trim() && imageHandler.pendingImages.length === 0;
   });
 
-  // Send on Enter (Shift+Enter for newline)
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -123,19 +122,19 @@ function sendMessage() {
 
   if (!text && images.length === 0) return;
 
-  // If no session, create one first
+  // If no active session, create one and queue the message
   if (!sessionUI.currentSessionId) {
-    wsClient.send({ type: 'create_session', name: 'Quick Session' });
-    // Queue the message to send after session init
-    const waitForSession = (msg) => {
-      if (msg.type === 'system' && msg.session_id) {
-        doSend(text, images);
-        wsClient.onMessage = handleMessage; // restore
-      } else {
-        handleMessage(msg);
-      }
-    };
-    wsClient.onMessage = waitForSession;
+    if (creatingSession) return; // already creating, wait
+    creatingSession = true;
+    pendingMessage = { text, images, pendingImages: [...imageHandler.pendingImages] };
+    // Use first few words of the message as the session name
+    const name = text.slice(0, 40) || 'New Session';
+    wsClient.send({ type: 'create_session', name });
+    // Clear input immediately
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('send-btn').disabled = true;
+    imageHandler.clear();
     return;
   }
 
@@ -143,7 +142,7 @@ function sendMessage() {
 }
 
 function doSend(text, images) {
-  chat.addUserMessage(text, imageHandler.pendingImages);
+  chat.addUserMessage(text, imageHandler.pendingImages.length ? imageHandler.pendingImages : undefined);
 
   wsClient.send({
     type: 'message',
@@ -156,13 +155,35 @@ function doSend(text, images) {
   document.getElementById('send-btn').disabled = true;
   document.getElementById('abort-btn').classList.add('active');
   imageHandler.clear();
+  chat.showThinking('Thinking...');
 }
 
 function handleMessage(msg) {
-  // Track session ID
+  // Track session ID from init
   if (msg.type === 'system' && msg.session_id) {
-    const sessions = sessionUI;
-    sessions.setCurrentSession(msg.session_id, msg.session_id.slice(0, 8));
+    sessionUI.setCurrentSession(msg.session_id);
+    chat.setSession(msg.session_id);
+    creatingSession = false;
+
+    // Send any queued message now that session is ready
+    if (pendingMessage) {
+      const { text, images, pendingImages } = pendingMessage;
+      pendingMessage = null;
+      chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
+      wsClient.send({
+        type: 'message',
+        content: text,
+        images: images.length > 0 ? images : undefined,
+      });
+      document.getElementById('abort-btn').classList.add('active');
+    }
+  }
+
+  // Session ID changed after resume — migrate server-side history
+  if (msg.type === 'session_id_update' && msg.oldSessionId !== msg.newSessionId) {
+    chat.migrateSessionId(msg.oldSessionId, msg.newSessionId);
+    sessionUI.currentSessionId = msg.newSessionId;
+    chat.sessionId = msg.newSessionId;
   }
 
   // Hide abort button on result

@@ -3,20 +3,28 @@ let hlLoaded = false;
 
 export async function initMarkdown() {
   // Load marked
-  if (!window.marked) {
-    await loadScript('https://cdn.jsdelivr.net/npm/marked@14/marked.min.js');
+  try {
+    if (!window.marked) {
+      await loadScript('https://cdn.jsdelivr.net/npm/marked@14/marked.min.js');
+    }
+    markedLoaded = true;
+  } catch {
+    console.warn('Failed to load marked');
   }
-  markedLoaded = true;
 
-  // Load highlight.js
-  if (!window.hljs) {
-    await loadScript('https://cdn.jsdelivr.net/gh/nicehash/highlight.js@9.14.2/build/highlight.min.js');
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css';
-    document.head.appendChild(link);
+  // Load highlight.js (non-blocking — app works without it)
+  try {
+    if (!window.hljs) {
+      await loadScript('https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js');
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css';
+      document.head.appendChild(link);
+    }
+    hlLoaded = true;
+  } catch {
+    console.warn('Failed to load highlight.js');
   }
-  hlLoaded = true;
 
   if (window.marked) {
     window.marked.setOptions({

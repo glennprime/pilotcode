@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SessionManager } from '../claude/manager.js';
 import { ClaudeProcess } from '../claude/process.js';
-import { getAuthToken, IMAGES_DIR } from '../config.js';
+import { getAuthToken, IMAGES_DIR, DEFAULT_CWD } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
 
 interface WSMessage {
@@ -80,7 +80,7 @@ function handleCreateSession(
   manager: SessionManager,
   setCurrent: (proc: ClaudeProcess, sid: string) => void
 ): void {
-  const cwd = msg.cwd || process.cwd();
+  const cwd = msg.cwd || DEFAULT_CWD;
   const name = msg.name || 'New Session';
 
   const proc = manager.createProcess({ cwd, model: msg.model });
@@ -116,7 +116,7 @@ function handleResumeSession(
   const name = meta?.name || 'Resumed Session';
 
   proc = manager.createProcess({ cwd, resume: sessionId });
-  wireProcess(ws, proc, manager, name, cwd, setCurrent);
+  wireProcess(ws, proc, manager, name, cwd, setCurrent, sessionId);
 }
 
 function wireProcess(
@@ -125,20 +125,36 @@ function wireProcess(
   manager: SessionManager,
   name: string,
   cwd: string,
-  setCurrent: (proc: ClaudeProcess, sid: string) => void
+  setCurrent: (proc: ClaudeProcess, sid: string) => void,
+  replacesSessionId?: string
 ): void {
   proc.on('message', (msg: SDKMessage) => {
     // Capture session ID from init
     if (msg.type === 'system' && msg.session_id) {
       const sid = msg.session_id;
       setCurrent(proc, sid);
-      manager.saveSession({
-        id: sid,
-        name,
-        cwd,
-        createdAt: new Date().toISOString(),
-        lastUsed: new Date().toISOString(),
-      });
+
+      if (replacesSessionId && replacesSessionId !== sid) {
+        // Resuming gave us a new ID — update the old entry instead of creating a duplicate
+        const sessions = manager.loadSessions();
+        const existing = sessions.find((s) => s.id === replacesSessionId);
+        if (existing) {
+          existing.id = sid;
+          existing.lastUsed = new Date().toISOString();
+          manager.saveSessions(sessions);
+        } else {
+          manager.saveSession({ id: sid, name, cwd, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
+        }
+        // Also register the process under the new ID
+        manager.registerProcess(sid, proc);
+      } else {
+        manager.saveSession({ id: sid, name, cwd, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
+      }
+
+      // Tell the client the canonical session ID
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'session_id_update', oldSessionId: replacesSessionId || sid, newSessionId: sid }));
+      }
     }
 
     if (ws.readyState === WebSocket.OPEN) {

@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { randomBytes } from 'crypto';
-import { extname } from 'path';
-import { IMAGES_DIR } from '../config.js';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { extname, join } from 'path';
+import { DATA_DIR, IMAGES_DIR } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
 import { requireAuth } from './auth.js';
+
+const HISTORY_DIR = join(DATA_DIR, 'history');
+mkdirSync(HISTORY_DIR, { recursive: true });
 
 export function createApiRouter(manager: SessionManager): Router {
   const router = Router();
@@ -49,8 +53,54 @@ export function createApiRouter(manager: SessionManager): Router {
     );
   });
 
+  router.patch('/api/sessions/:id', requireAuth, (req: Request, res: Response) => {
+    const sessions = manager.loadSessions();
+    const session = sessions.find((s) => s.id === req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+    if (req.body.name) session.name = req.body.name;
+    if (req.body.cwd) session.cwd = req.body.cwd;
+    manager.saveSessions(sessions);
+    res.json({ ok: true, session });
+  });
+
   router.delete('/api/sessions/:id', requireAuth, (req: Request, res: Response) => {
     manager.killProcess(req.params.id);
+    const sessions = manager.loadSessions().filter((s) => s.id !== req.params.id);
+    manager.saveSessions(sessions);
+    // Clean up history file
+    const histFile = join(HISTORY_DIR, `${req.params.id}.json`);
+    try { if (existsSync(histFile)) writeFileSync(histFile, '[]'); } catch {}
+    res.json({ ok: true });
+  });
+
+  // Chat history
+  router.get('/api/history/:sessionId', requireAuth, (req: Request, res: Response) => {
+    const file = join(HISTORY_DIR, `${req.params.sessionId}.json`);
+    if (!existsSync(file)) {
+      res.json([]);
+      return;
+    }
+    try {
+      const data = JSON.parse(readFileSync(file, 'utf-8'));
+      res.json(data);
+    } catch {
+      res.json([]);
+    }
+  });
+
+  router.post('/api/history/:sessionId', requireAuth, (req: Request, res: Response) => {
+    const file = join(HISTORY_DIR, `${req.params.sessionId}.json`);
+    const entries = req.body;
+    if (!Array.isArray(entries)) {
+      res.status(400).json({ error: 'Expected array' });
+      return;
+    }
+    // Keep last 500 entries
+    const trimmed = entries.slice(-500);
+    writeFileSync(file, JSON.stringify(trimmed));
     res.json({ ok: true });
   });
 

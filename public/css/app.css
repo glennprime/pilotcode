@@ -259,19 +259,35 @@ html, body {
 
 .copy-btn:active { background: var(--bg-hover); }
 
-/* Tool use indicators */
-.tool-use {
-  font-size: 12px;
-  color: var(--text-dim);
-  padding: 6px 12px;
-  background: var(--bg-elevated);
-  border-left: 2px solid var(--accent-dim);
-  border-radius: 0 6px 6px 0;
-  margin: 4px 0;
-  font-family: var(--font-mono);
+/* Tool use indicators — hidden to reduce noise */
+.tool-use { display: none; }
+
+/* ── Thinking Spinner ── */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  animation: fadeIn 0.15s ease;
 }
 
-.tool-use .tool-name { color: var(--accent); font-weight: 600; }
+.thinking-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.thinking-label {
+  color: var(--text-dim);
+  font-size: 13px;
+}
 
 /* ── Permission Cards ── */
 .permission-card {
@@ -513,10 +529,45 @@ html, body {
 
 .session-item:active, .session-item.active { background: var(--bg-hover); }
 
+.session-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .session-item .session-item-name {
   font-size: 14px;
   font-weight: 500;
+  flex: 1;
+  cursor: pointer;
 }
+
+.session-rename-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.session-delete-btn {
+  background: none;
+  border: none;
+  color: var(--red);
+  font-size: 18px;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.session-item:hover .session-rename-btn,
+.session-item:hover .session-delete-btn { opacity: 1; }
 
 .session-item .session-item-meta {
   font-size: 11px;
