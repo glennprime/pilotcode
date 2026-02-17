@@ -112,6 +112,9 @@ function setupInput() {
   abortBtn.onclick = () => {
     wsClient.send({ type: 'interrupt' });
     abortBtn.classList.remove('active');
+    chat.hideThinking();
+    chat.finishStreaming();
+    chat.addSystemMessage('Stopped');
   };
 }
 
@@ -184,6 +187,14 @@ function handleMessage(msg) {
     chat.migrateSessionId(msg.oldSessionId, msg.newSessionId);
     sessionUI.currentSessionId = msg.newSessionId;
     chat.sessionId = msg.newSessionId;
+  }
+
+  // User message from another device — show it
+  if (msg.type === 'user_broadcast') {
+    const images = (msg.images || []).map((f) => ({ filename: f, objectUrl: `/data/images/${f}` }));
+    chat.addUserMessage(msg.content || '', images.length ? images : undefined);
+    chat.showThinking('Thinking...');
+    document.getElementById('abort-btn').classList.add('active');
   }
 
   // Hide abort button on result

@@ -14,6 +14,43 @@ interface WSMessage {
   [key: string]: any;
 }
 
+// Track all connected clients per session for broadcasting
+const sessionClients = new Map<string, Set<WebSocket>>();
+
+function broadcast(sessionId: string, data: string, exclude?: WebSocket): void {
+  const clients = sessionClients.get(sessionId);
+  if (!clients) return;
+  for (const client of clients) {
+    if (client !== exclude && client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  }
+}
+
+function broadcastAll(sessionId: string, data: string): void {
+  const clients = sessionClients.get(sessionId);
+  if (!clients) return;
+  for (const client of clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  }
+}
+
+function addClient(sessionId: string, ws: WebSocket): void {
+  if (!sessionClients.has(sessionId)) {
+    sessionClients.set(sessionId, new Set());
+  }
+  sessionClients.get(sessionId)!.add(ws);
+}
+
+function removeClient(ws: WebSocket): void {
+  for (const [sid, clients] of sessionClients) {
+    clients.delete(ws);
+    if (clients.size === 0) sessionClients.delete(sid);
+  }
+}
+
 export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): void {
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     // Auth check
@@ -40,19 +77,23 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
         case 'create_session':
           handleCreateSession(ws, msg, manager, (proc, sid) => {
             currentProc = proc;
+            if (currentSessionId) removeClient(ws);
             currentSessionId = sid;
+            addClient(sid, ws);
           });
           break;
 
         case 'resume_session':
           handleResumeSession(ws, msg, manager, (proc, sid) => {
             currentProc = proc;
+            if (currentSessionId) removeClient(ws);
             currentSessionId = sid;
+            addClient(sid, ws);
           });
           break;
 
         case 'message':
-          handleUserMessage(ws, msg, currentProc);
+          handleUserMessage(ws, msg, currentProc, currentSessionId);
           break;
 
         case 'permission_response':
@@ -69,7 +110,7 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
     });
 
     ws.on('close', () => {
-      // Don't kill the process on disconnect — allow reconnection
+      removeClient(ws);
     });
   });
 }
@@ -104,8 +145,7 @@ function handleResumeSession(
   if (proc && proc.isAlive) {
     setCurrent(proc, sessionId);
     ws.send(JSON.stringify({ type: 'session_resumed', sessionId }));
-    // Re-wire output
-    wireExistingProcess(ws, proc);
+    wireExistingProcess(ws, proc, sessionId);
     return;
   }
 
@@ -128,14 +168,15 @@ function wireProcess(
   setCurrent: (proc: ClaudeProcess, sid: string) => void,
   replacesSessionId?: string
 ): void {
+  let sessionId: string | null = null;
+
   proc.on('message', (msg: SDKMessage) => {
-    // Capture session ID from init
     if (msg.type === 'system' && msg.session_id) {
       const sid = msg.session_id;
+      sessionId = sid;
       setCurrent(proc, sid);
 
       if (replacesSessionId && replacesSessionId !== sid) {
-        // Resuming gave us a new ID — update the old entry instead of creating a duplicate
         const sessions = manager.loadSessions();
         const existing = sessions.find((s) => s.id === replacesSessionId);
         if (existing) {
@@ -145,80 +186,116 @@ function wireProcess(
         } else {
           manager.saveSession({ id: sid, name, cwd, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
         }
-        // Also register the process under the new ID
         manager.registerProcess(sid, proc);
+
+        // Migrate clients from old session ID to new
+        const oldClients = sessionClients.get(replacesSessionId);
+        if (oldClients) {
+          for (const c of oldClients) addClient(sid, c);
+          sessionClients.delete(replacesSessionId);
+        }
       } else {
         manager.saveSession({ id: sid, name, cwd, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
       }
 
-      // Tell the client the canonical session ID
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'session_id_update', oldSessionId: replacesSessionId || sid, newSessionId: sid }));
-      }
+      // Broadcast session ID update to all clients
+      broadcastAll(sid, JSON.stringify({ type: 'session_id_update', oldSessionId: replacesSessionId || sid, newSessionId: sid }));
     }
 
-    if (ws.readyState === WebSocket.OPEN) {
+    // Broadcast all Claude messages to every client on this session
+    if (sessionId) {
+      broadcastAll(sessionId, JSON.stringify(msg));
+    } else if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(msg));
     }
   });
 
   proc.on('stderr', (text: string) => {
+    // Only send to originating client (debug noise)
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'log', log: { level: 'debug', message: text } }));
     }
   });
 
   proc.on('close', (code: number) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'process_exit', code }));
+    if (sessionId) {
+      broadcastAll(sessionId, JSON.stringify({ type: 'process_exit', code }));
     }
   });
 
   proc.on('error', (err: Error) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'error', error: err.message }));
+    if (sessionId) {
+      broadcastAll(sessionId, JSON.stringify({ type: 'error', error: err.message }));
     }
   });
 }
 
-function wireExistingProcess(ws: WebSocket, proc: ClaudeProcess): void {
+function wireExistingProcess(ws: WebSocket, proc: ClaudeProcess, sessionId: string): void {
   proc.on('message', (msg: SDKMessage) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg));
-    }
+    broadcastAll(sessionId, JSON.stringify(msg));
   });
 }
 
-function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | null): void {
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+
+function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | null, sessionId: string | null): void {
   if (!proc || !proc.isAlive) {
     ws.send(JSON.stringify({ type: 'error', error: 'No active session. Create or resume one first.' }));
     return;
   }
 
   const text = msg.content || '';
-  const images: string[] = msg.images || [];
+  const files: string[] = msg.images || [];
 
-  if (images.length > 0) {
-    // Build content blocks with images
+  // Broadcast the user message to other clients so they see it in real-time
+  if (sessionId) {
+    broadcast(sessionId, JSON.stringify({
+      type: 'user_broadcast',
+      content: text,
+      images: files,
+    }), ws);
+  }
+
+  if (files.length > 0) {
     const blocks: ContentBlock[] = [];
-    for (const filename of images) {
-      try {
-        const imgPath = join(IMAGES_DIR, filename);
-        const data = readFileSync(imgPath).toString('base64');
-        const ext = filename.split('.').pop()?.toLowerCase() || 'jpeg';
-        const mediaType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
-        blocks.push({
-          type: 'image',
-          source: { type: 'base64', media_type: mediaType, data },
-        } as ImageBlock);
-      } catch {
-        ws.send(JSON.stringify({ type: 'error', error: `Failed to read image: ${filename}` }));
+    const docPaths: string[] = [];
+
+    for (const filename of files) {
+      const ext = filename.split('.').pop()?.toLowerCase() || '';
+      const filePath = join(IMAGES_DIR, filename);
+
+      if (IMAGE_EXTENSIONS.has(ext)) {
+        // Send images as base64 content blocks
+        try {
+          const data = readFileSync(filePath).toString('base64');
+          const mediaType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: mediaType, data },
+          } as ImageBlock);
+        } catch {
+          ws.send(JSON.stringify({ type: 'error', error: `Failed to read image: ${filename}` }));
+        }
+      } else {
+        // For documents (PDF, Excel, etc.), tell Claude the file path so it can read it
+        docPaths.push(filePath);
       }
     }
-    if (text) {
-      blocks.push({ type: 'text', text });
+
+    // Build the text content with document references
+    let fullText = text;
+    if (docPaths.length > 0) {
+      const fileList = docPaths.map((p) => `File: ${p}`).join('\n');
+      fullText = fullText
+        ? `${fullText}\n\nI've attached the following file(s) — please read and analyze them:\n${fileList}`
+        : `I've attached the following file(s) — please read and analyze them:\n${fileList}`;
     }
-    proc.sendMessage(blocks);
+
+    if (fullText) {
+      blocks.push({ type: 'text', text: fullText });
+    }
+
+    proc.sendMessage(blocks.length > 0 ? blocks : fullText);
   } else {
     proc.sendMessage(text);
   }

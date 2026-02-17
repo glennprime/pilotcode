@@ -1,14 +1,28 @@
 const MAX_DIMENSION = 1568;
 const JPEG_QUALITY = 0.85;
 
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+const FILE_ICONS = {
+  'application/pdf': 'PDF',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+  'application/json': 'JSON',
+  'text/csv': 'CSV',
+  'text/plain': 'TXT',
+};
+
 export class ImageHandler {
   constructor(onImagesChange) {
-    this.pendingImages = []; // { filename, objectUrl }
+    this.pendingImages = []; // { filename, objectUrl, isImage, name }
     this.onImagesChange = onImagesChange;
 
     this.fileInput = document.createElement('input');
     this.fileInput.type = 'file';
-    this.fileInput.accept = 'image/*';
+    this.fileInput.accept = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.pptx,.csv,.txt,.json';
     this.fileInput.multiple = true;
     this.fileInput.onchange = (e) => this.handleFiles(e.target.files);
 
@@ -18,12 +32,19 @@ export class ImageHandler {
   async handleFiles(files) {
     for (const file of files) {
       try {
-        const resized = await resizeImage(file);
-        const filename = await uploadImage(resized);
-        const objectUrl = URL.createObjectURL(file);
-        this.pendingImages.push({ filename, objectUrl });
+        const isImage = IMAGE_TYPES.includes(file.type);
+
+        if (isImage) {
+          const resized = await resizeImage(file);
+          const result = await uploadFile(resized, 'photo.jpg');
+          const objectUrl = URL.createObjectURL(file);
+          this.pendingImages.push({ filename: result.filename, objectUrl, isImage: true, name: file.name });
+        } else {
+          const result = await uploadFile(file, file.name);
+          this.pendingImages.push({ filename: result.filename, isImage: false, name: file.name, mimetype: file.type });
+        }
       } catch (err) {
-        console.error('Image upload failed:', err);
+        console.error('Upload failed:', err);
       }
     }
     this.onImagesChange(this.pendingImages);
@@ -38,6 +59,14 @@ export class ImageHandler {
 
   getFilenames() {
     return this.pendingImages.map((i) => i.filename);
+  }
+
+  getAttachments() {
+    return this.pendingImages.map((i) => ({
+      filename: i.filename,
+      isImage: i.isImage,
+      name: i.name,
+    }));
   }
 
   clear() {
@@ -76,13 +105,12 @@ async function resizeImage(file) {
   });
 }
 
-async function uploadImage(blob) {
+async function uploadFile(blob, name) {
   const form = new FormData();
-  form.append('image', blob, 'photo.jpg');
+  form.append('image', blob, name);
   const res = await fetch('/api/images', { method: 'POST', body: form });
   if (!res.ok) throw new Error('Upload failed');
-  const data = await res.json();
-  return data.filename;
+  return await res.json();
 }
 
 export function renderImagePreview(images, onRemove) {
@@ -97,11 +125,27 @@ export function renderImagePreview(images, onRemove) {
   images.forEach((img, i) => {
     const thumb = document.createElement('div');
     thumb.className = 'preview-thumb';
-    thumb.innerHTML = `
-      <img src="${img.objectUrl}" alt="preview">
-      <button class="remove-img">&times;</button>
-    `;
+
+    if (img.isImage && img.objectUrl) {
+      thumb.innerHTML = `
+        <img src="${img.objectUrl}" alt="preview">
+        <button class="remove-img">&times;</button>
+      `;
+    } else {
+      const ext = getFileLabel(img.name, img.mimetype);
+      thumb.innerHTML = `
+        <div class="file-icon">${ext}</div>
+        <button class="remove-img">&times;</button>
+      `;
+    }
+
     thumb.querySelector('.remove-img').onclick = () => onRemove(i);
     container.appendChild(thumb);
   });
+}
+
+function getFileLabel(name, mimetype) {
+  if (mimetype && FILE_ICONS[mimetype]) return FILE_ICONS[mimetype];
+  const ext = name?.split('.').pop()?.toUpperCase();
+  return ext || 'FILE';
 }

@@ -25,20 +25,28 @@ export function createApiRouter(manager: SessionManager): Router {
     storage,
     limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
     fileFilter: (_req, file, cb) => {
-      if (file.mimetype.startsWith('image/')) {
+      const allowed = [
+        'image/', 'application/pdf',
+        'application/vnd.openxmlformats-officedocument', // docx, xlsx, pptx
+        'application/vnd.ms-excel', 'application/msword',
+        'application/vnd.ms-powerpoint',
+        'text/', 'application/json', 'application/csv',
+      ];
+      if (allowed.some((t) => file.mimetype.startsWith(t))) {
         cb(null, true);
       } else {
-        cb(new Error('Only image files allowed'));
+        cb(new Error('File type not supported'));
       }
     },
   });
 
   router.post('/api/images', requireAuth, upload.single('image'), (req: Request, res: Response) => {
     if (!req.file) {
-      res.status(400).json({ error: 'No image uploaded' });
+      res.status(400).json({ error: 'No file uploaded' });
       return;
     }
-    res.json({ filename: req.file.filename });
+    const isImage = req.file.mimetype.startsWith('image/');
+    res.json({ filename: req.file.filename, isImage, mimetype: req.file.mimetype });
   });
 
   // Sessions
