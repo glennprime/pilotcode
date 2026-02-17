@@ -30,7 +30,7 @@ export class ClaudeProcess extends EventEmitter {
       '--output-format', 'stream-json',
       '--verbose',
       '--input-format', 'stream-json',
-      '--permission-prompt-tool', 'stdio',
+      '--dangerously-skip-permissions',
     ];
 
     if (this.options.model) {

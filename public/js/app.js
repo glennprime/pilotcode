@@ -197,9 +197,10 @@ function handleMessage(msg) {
     document.getElementById('abort-btn').classList.add('active');
   }
 
-  // Hide abort button on result
+  // Hide abort button on result + play notification
   if (msg.type === 'result' || msg.type === 'process_exit') {
     document.getElementById('abort-btn').classList.remove('active');
+    playDing();
   }
 
   chat.handleSDKMessage(msg, (requestId, allow) => {
@@ -220,6 +221,24 @@ function handleStatus(status) {
   if (status === 'auth_failed') {
     showLogin();
   }
+}
+
+// Notification ding when Claude finishes
+function playDing() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+    osc.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.1); // D6
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {}
 }
 
 // Register service worker
