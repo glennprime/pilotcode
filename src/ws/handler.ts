@@ -17,6 +17,9 @@ interface WSMessage {
 // Track all connected clients per session for broadcasting
 const sessionClients = new Map<string, Set<WebSocket>>();
 
+// Cache pending permission request inputs so we can send them back as updatedInput
+const pendingPermissionInputs = new Map<string, unknown>();
+
 function broadcast(sessionId: string, data: string, exclude?: WebSocket): void {
   const clients = sessionClients.get(sessionId);
   if (!clients) return;
@@ -202,6 +205,11 @@ function wireProcess(
       broadcastAll(sid, JSON.stringify({ type: 'session_id_update', oldSessionId: replacesSessionId || sid, newSessionId: sid }));
     }
 
+    // Cache permission request inputs for later response
+    if (msg.type === 'control_request' && (msg as any).request_id && (msg as any).request?.input) {
+      pendingPermissionInputs.set((msg as any).request_id, (msg as any).request.input);
+    }
+
     // Broadcast all Claude messages to every client on this session
     if (sessionId) {
       broadcastAll(sessionId, JSON.stringify(msg));
@@ -303,7 +311,9 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
 
 function handlePermissionResponse(msg: WSMessage, proc: ClaudeProcess | null): void {
   if (!proc || !proc.isAlive) return;
-  proc.respondToPermission(msg.request_id, msg.allow === true);
+  const originalInput = pendingPermissionInputs.get(msg.request_id);
+  pendingPermissionInputs.delete(msg.request_id);
+  proc.respondToPermission(msg.request_id, msg.allow === true, originalInput);
 }
 
 function verifyToken(token: string): boolean {

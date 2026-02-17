@@ -1,7 +1,14 @@
 import { spawn, ChildProcess } from 'child_process';
 import { createInterface } from 'readline';
 import { EventEmitter } from 'events';
+import { appendFileSync } from 'fs';
+import { join } from 'path';
 import type { SDKMessage, StdinMessage, ContentBlock } from './types.js';
+
+const DEBUG_LOG = join(import.meta.dirname, '..', '..', 'data', 'claude-debug.log');
+function debugLog(msg: string): void {
+  try { appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${msg}\n`); } catch {}
+}
 
 export interface ClaudeProcessOptions {
   cwd?: string;
@@ -48,6 +55,7 @@ export class ClaudeProcess extends EventEmitter {
     const rl = createInterface({ input: this.child.stdout! });
     rl.on('line', (line) => {
       if (!line.trim()) return;
+      debugLog(`[stdout] ${line.substring(0, 500)}`);
       try {
         const msg: SDKMessage = JSON.parse(line);
         if (msg.type === 'system' && msg.session_id) {
@@ -61,6 +69,7 @@ export class ClaudeProcess extends EventEmitter {
     });
 
     this.child.stderr?.on('data', (data: Buffer) => {
+      debugLog(`[stderr] ${data.toString().substring(0, 500)}`);
       this.emit('stderr', data.toString());
     });
 
@@ -81,7 +90,7 @@ export class ClaudeProcess extends EventEmitter {
       return;
     }
     const line = JSON.stringify(msg) + '\n';
-    console.log('[claude] writing to stdin:', msg.type, 'request_id' in msg ? (msg as any).response?.request_id : '');
+    debugLog(`[stdin] ${line.substring(0, 500)}`);
     this.child.stdin.write(line);
   }
 
@@ -92,14 +101,14 @@ export class ClaudeProcess extends EventEmitter {
     });
   }
 
-  respondToPermission(requestId: string, allow: boolean): void {
+  respondToPermission(requestId: string, allow: boolean, originalInput?: unknown): void {
     this.write({
       type: 'control_response',
       response: {
         subtype: 'success',
         request_id: requestId,
         response: allow
-          ? { behavior: 'allow' }
+          ? { behavior: 'allow', updatedInput: originalInput || {} }
           : { behavior: 'deny', message: 'User denied permission' },
       },
     });

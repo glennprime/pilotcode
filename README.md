@@ -210,6 +210,26 @@ cp .env.example .env
 
 On your iPhone, open the PilotCode URL in Safari, tap the share button, and select **"Add to Home Screen"**. It will look and feel like a native app.
 
+## Troubleshooting
+
+**"Process exited (code 1)" when starting a session**
+- Make sure Claude Code CLI is installed and authenticated: run `claude` in your terminal
+- If running PilotCode from within a Claude Code session, the `CLAUDECODE` env var is automatically stripped
+
+**Commands fail after tapping Allow**
+- Make sure you're on the latest version of PilotCode — an earlier version had a bug where the permission response was missing `updatedInput`, causing Claude CLI to throw a ZodError
+
+**Can't connect from phone**
+- Check that both the server and tunnel are running: `lsof -ti:3456` and `pgrep -f cloudflared`
+- Make sure your Mac isn't sleeping (System Settings → Lock Screen → display sleep is OK, system sleep is not)
+
+**Auth token lost**
+- The token is stored in `data/config.json` — read it with `cat data/config.json`
+- Or set a custom one via `PILOTCODE_TOKEN` env var
+
+**Debug logging**
+- Check `data/claude-debug.log` for detailed stdin/stdout communication with the Claude CLI process
+
 ## Tips
 
 - **Sessions** are like separate Claude conversations. Create one per project.
