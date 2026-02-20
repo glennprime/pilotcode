@@ -402,6 +402,7 @@ function ensureBroadcastWired(
             manager.saveSession({ id: sid, name, cwd, model, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
           }
           manager.registerProcess(sid, proc);
+          manager.registerAlias(replacesSessionId, sid);
 
           // Migrate history and message buffer from old ID to new
           migrateHistory(replacesSessionId, sid);

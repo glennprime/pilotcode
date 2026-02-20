@@ -98,7 +98,6 @@ function showApp() {
 function setupInput() {
   const input = document.getElementById('message-input');
   const sendBtn = document.getElementById('send-btn');
-  const abortBtn = document.getElementById('abort-btn');
 
   input.addEventListener('input', () => {
     input.style.height = 'auto';
@@ -114,14 +113,6 @@ function setupInput() {
   });
 
   sendBtn.onclick = () => sendMessage();
-
-  abortBtn.onclick = () => {
-    wsClient.send({ type: 'interrupt' });
-    abortBtn.classList.remove('active');
-    chat.hideThinking();
-    chat.finishStreaming();
-    chat.addSystemMessage('Stopped');
-  };
 }
 
 function sendMessage() {
@@ -165,7 +156,7 @@ function doSend(text, images) {
   document.getElementById('message-input').value = '';
   document.getElementById('message-input').style.height = 'auto';
   document.getElementById('send-btn').disabled = true;
-  document.getElementById('abort-btn').classList.add('active');
+
   imageHandler.clear();
   chat.showThinking('Thinking...');
 }
@@ -190,13 +181,13 @@ function handleMessage(msg) {
         content: text,
         images: images.length > 0 ? images : undefined,
       });
-      document.getElementById('abort-btn').classList.add('active');
+    
     } else if (!sessionGreeted) {
       // Auto-greet: session created from modal with no message queued
       sessionGreeted = true;
       chat.addUserMessage('hello');
       wsClient.send({ type: 'message', content: 'hello' });
-      document.getElementById('abort-btn').classList.add('active');
+    
       chat.showThinking('Thinking...');
     }
   }
@@ -245,7 +236,7 @@ function handleMessage(msg) {
   // Server gave up trying to auto-resume
   if (msg.type === 'session_crashed') {
     chat.addSystemMessage(msg.error || 'Session crashed. Please resume manually.');
-    document.getElementById('abort-btn').classList.remove('active');
+
   }
 
   // User message from another device — show it
@@ -253,12 +244,12 @@ function handleMessage(msg) {
     const images = (msg.images || []).map((f) => ({ filename: f, objectUrl: `/data/images/${f}` }));
     chat.addUserMessage(msg.content || '', images.length ? images : undefined);
     chat.showThinking('Thinking...');
-    document.getElementById('abort-btn').classList.add('active');
+  
   }
 
   // Hide abort button on result + play notification (only on success, not errors)
   if (msg.type === 'result' || msg.type === 'process_exit') {
-    document.getElementById('abort-btn').classList.remove('active');
+
     if (msg.type === 'result' && !msg.is_error && !dingSuppressed) {
       playDing();
     }
