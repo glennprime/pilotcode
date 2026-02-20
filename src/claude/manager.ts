@@ -12,6 +12,7 @@ export interface SessionMeta {
 
 export class SessionManager {
   private processes = new Map<string, ClaudeProcess>();
+  private intentionalKills = new Set<string>();
 
   createProcess(opts: ClaudeProcessOptions): ClaudeProcess {
     const proc = new ClaudeProcess(opts);
@@ -41,9 +42,18 @@ export class SessionManager {
   killProcess(sessionId: string): void {
     const proc = this.processes.get(sessionId);
     if (proc) {
+      this.intentionalKills.add(sessionId);
       proc.kill();
       this.processes.delete(sessionId);
     }
+  }
+
+  wasIntentionalKill(sessionId: string): boolean {
+    return this.intentionalKills.has(sessionId);
+  }
+
+  clearIntentionalKill(sessionId: string): void {
+    this.intentionalKills.delete(sessionId);
   }
 
   listActive(): string[] {

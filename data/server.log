@@ -42,3 +42,148 @@
   
   Full token: 7632dfb9fdaeee4c22f66dddddf22a5e
 
+2026-02-18T21:00:59.759Z [INFO] [server] PilotCode started on port 3456
+
+  ╔══════════════════════════════════════╗
+  ║         PilotCode Server             ║
+  ╠══════════════════════════════════════╣
+  ║  http://localhost:3456              ║
+  ║                                      ║
+  ║  Auth token: 7632dfb9...2a5e              ║
+  ╚══════════════════════════════════════╝
+  
+  Full token: 7632dfb9fdaeee4c22f66dddddf22a5e
+
+2026-02-18T21:01:00.062Z [INFO] [ws] New connection from ::1
+2026-02-18T21:01:00.063Z [INFO] [ws] Auth OK for ::1
+2026-02-18T21:01:00.093Z [INFO] [ws] Received: rejoin_session (session: 3350c24a-0f81-4b2f-8d4b-8cf593578f03)
+2026-02-18T21:01:00.118Z [INFO] [ws] Received: resume_session (session: 3350c24a-0f81-4b2f-8d4b-8cf593578f03)
+2026-02-18T21:01:00.119Z [INFO] [claude] Spawning: claude --output-format stream-json --verbose --input-format stream-json --resume 3350c24a-0f81-4b2f-8d4b-8cf593578f03 (cwd: /Users/glennprime)
+2026-02-18T21:01:01.818Z [INFO] [ws] Session resumed: f14f1a8e-c3fe-410e-9fa1-25186bb86c3c
+2026-02-18T21:01:01.869Z [INFO] [ws] Session resumed: f14f1a8e-c3fe-410e-9fa1-25186bb86c3c
+2026-02-18T21:01:42.880Z [INFO] [ws] New connection from ::1
+2026-02-18T21:01:42.881Z [INFO] [ws] Auth OK for ::1
+2026-02-18T21:01:43.051Z [INFO] [ws] Received: rejoin_session (session: c36b348d-4250-4df9-92dd-c57712537d65)
+2026-02-18T21:01:43.116Z [INFO] [ws] Received: resume_session (session: c36b348d-4250-4df9-92dd-c57712537d65)
+2026-02-18T21:01:43.118Z [INFO] [claude] Spawning: claude --output-format stream-json --verbose --input-format stream-json --resume c36b348d-4250-4df9-92dd-c57712537d65 (cwd: /Users/glennprime)
+2026-02-18T21:01:44.510Z [INFO] [ws] Session resumed: cfe8561a-4ba3-4635-8fe9-ecd2b82a81d9
+2026-02-18T21:01:44.555Z [INFO] [ws] Session resumed: cfe8561a-4ba3-4635-8fe9-ecd2b82a81d9
+2026-02-18T21:15:24.189Z [INFO] [ws] Received: create_session
+2026-02-18T21:15:24.191Z [INFO] [claude] Spawning: claude --output-format stream-json --verbose --input-format stream-json (cwd: /Users/glennprime)
+2026-02-18T21:15:25.667Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T21:15:25.716Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T21:15:31.951Z [INFO] [ws] Received: message
+2026-02-18T21:15:31.985Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T21:16:23.324Z [INFO] [ws] Received: message
+2026-02-18T21:16:23.343Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T21:17:19.632Z [INFO] [ws] Received: message
+2026-02-18T21:17:19.639Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T21:17:50.117Z [INFO] [ws] Received: message
+2026-02-18T21:17:50.131Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T21:18:12.905Z [INFO] [ws] Received: message
+2026-02-18T21:18:23.688Z [INFO] [ws] Received: message
+2026-02-18T21:18:28.896Z [INFO] [ws] Received: message
+2026-02-18T22:07:18.383Z [INFO] [ws] New connection from ::1
+2026-02-18T22:07:18.386Z [INFO] [ws] Auth OK for ::1
+2026-02-18T22:07:18.471Z [INFO] [ws] Received: rejoin_session (session: 90f100fb-a598-4882-923c-c9ca3dab5f63)
+2026-02-18T22:07:18.471Z [INFO] [ws] Session rejoined: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T22:07:18.472Z [INFO] [ws] Wired existing process for session 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T22:10:10.451Z [INFO] [ws] New connection from ::1
+2026-02-18T22:10:10.453Z [INFO] [ws] Auth OK for ::1
+2026-02-18T22:10:10.490Z [INFO] [ws] Received: rejoin_session (session: 90f100fb-a598-4882-923c-c9ca3dab5f63)
+2026-02-18T22:10:10.491Z [INFO] [ws] Session rejoined: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T22:10:10.491Z [INFO] [ws] Skipping duplicate listener for session 90f100fb-a598-4882-923c-c9ca3dab5f63 — already wired
+2026-02-18T22:26:54.161Z [INFO] [ws] New connection from ::1
+2026-02-18T22:26:54.163Z [INFO] [ws] Auth OK for ::1
+2026-02-18T22:26:54.268Z [INFO] [ws] Received: rejoin_session (session: 90f100fb-a598-4882-923c-c9ca3dab5f63)
+2026-02-18T22:26:54.269Z [INFO] [ws] Session rejoined: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T22:26:54.269Z [INFO] [ws] Skipping duplicate listener for session 90f100fb-a598-4882-923c-c9ca3dab5f63 — already wired
+2026-02-18T22:48:12.726Z [INFO] [ws] New connection from ::1
+2026-02-18T22:48:12.728Z [INFO] [ws] Auth OK for ::1
+2026-02-18T22:48:12.942Z [INFO] [ws] Received: rejoin_session (session: 90f100fb-a598-4882-923c-c9ca3dab5f63)
+2026-02-18T22:48:12.943Z [INFO] [ws] Session rejoined: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-18T22:48:12.943Z [INFO] [ws] Skipping duplicate listener for session 90f100fb-a598-4882-923c-c9ca3dab5f63 — already wired
+2026-02-20T12:46:44.735Z [INFO] [ws] New connection from ::1
+2026-02-20T12:46:44.737Z [INFO] [ws] Auth OK for ::1
+2026-02-20T18:19:35.657Z [INFO] [ws] New connection from ::1
+2026-02-20T18:19:35.659Z [INFO] [ws] Auth OK for ::1
+2026-02-20T18:19:38.012Z [INFO] [ws] Received: resume_session (session: 90f100fb-a598-4882-923c-c9ca3dab5f63)
+2026-02-20T18:19:38.012Z [INFO] [ws] Session resumed: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:19:38.013Z [INFO] [ws] Skipping duplicate listener for session 90f100fb-a598-4882-923c-c9ca3dab5f63 — already wired
+2026-02-20T18:20:05.683Z [INFO] [ws] Received: message
+2026-02-20T18:20:05.754Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:20:22.058Z [INFO] [ws] Received: message
+2026-02-20T18:20:27.602Z [INFO] [ws] Received: message
+2026-02-20T18:20:37.714Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:21:41.698Z [INFO] [ws] Received: message
+2026-02-20T18:21:41.712Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:22:29.493Z [INFO] [ws] Received: message
+2026-02-20T18:22:29.505Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:22:54.530Z [INFO] [ws] Received: message
+2026-02-20T18:22:54.546Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:23:03.637Z [INFO] [ws] Received: message
+2026-02-20T18:23:06.193Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:23:36.844Z [INFO] [ws] Received: message
+2026-02-20T18:23:36.869Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:23:54.544Z [INFO] [claude] Process exited with code 143 (session: cfe8561a-4ba3-4635-8fe9-ecd2b82a81d9)
+2026-02-20T18:23:54.544Z [INFO] [claude] Process closed with code 143, sessionId=cfe8561a-4ba3-4635-8fe9-ecd2b82a81d9
+2026-02-20T18:23:56.842Z [INFO] [claude] Process exited with code 143 (session: f14f1a8e-c3fe-410e-9fa1-25186bb86c3c)
+2026-02-20T18:23:56.844Z [INFO] [claude] Process closed with code 143, sessionId=f14f1a8e-c3fe-410e-9fa1-25186bb86c3c
+2026-02-20T18:24:10.354Z [INFO] [ws] Received: message
+2026-02-20T18:24:10.368Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:24:46.694Z [INFO] [ws] Received: message
+2026-02-20T18:24:46.707Z [INFO] [ws] Session created: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:26:40.884Z [INFO] [server] Shutting down...
+2026-02-20T18:27:29.511Z [INFO] [server] PilotCode started on port 3456
+
+  ╔══════════════════════════════════════╗
+  ║         PilotCode Server             ║
+  ╠══════════════════════════════════════╣
+  ║  http://localhost:3456              ║
+  ║                                      ║
+  ║  Auth token: 7632dfb9...2a5e              ║
+  ╚══════════════════════════════════════╝
+  
+  Full token: 7632dfb9fdaeee4c22f66dddddf22a5e
+
+2026-02-20T18:27:53.624Z [INFO] [ws] New connection from ::1
+2026-02-20T18:27:53.626Z [INFO] [ws] Auth OK for ::1
+2026-02-20T18:27:58.046Z [INFO] [ws] Received: resume_session (session: 90f100fb-a598-4882-923c-c9ca3dab5f63)
+2026-02-20T18:27:58.048Z [INFO] [claude] Spawning: claude --output-format stream-json --verbose --input-format stream-json --dangerously-skip-permissions --resume 90f100fb-a598-4882-923c-c9ca3dab5f63 (cwd: /Users/glennprime)
+2026-02-20T18:28:00.679Z [INFO] [ws] Session resumed: 51b17798-a6fd-469a-9a74-500ba2cf723f
+2026-02-20T18:28:00.706Z [INFO] [ws] Session resumed: 51b17798-a6fd-469a-9a74-500ba2cf723f
+2026-02-20T18:28:35.799Z [INFO] [ws] Received: message
+2026-02-20T18:28:35.863Z [INFO] [ws] Session resumed: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:28:59.595Z [INFO] [ws] Received: resume_session (session: 51b17798-a6fd-469a-9a74-500ba2cf723f)
+2026-02-20T18:28:59.597Z [INFO] [ws] Session resumed: 51b17798-a6fd-469a-9a74-500ba2cf723f
+2026-02-20T18:28:59.597Z [INFO] [ws] Wired existing process for session 51b17798-a6fd-469a-9a74-500ba2cf723f
+2026-02-20T18:29:10.862Z [INFO] [ws] Received: resume_session (session: 90f100fb-a598-4882-923c-c9ca3dab5f63)
+2026-02-20T18:29:10.863Z [INFO] [claude] Spawning: claude --output-format stream-json --verbose --input-format stream-json --dangerously-skip-permissions --resume 90f100fb-a598-4882-923c-c9ca3dab5f63 (cwd: /Users/glennprime)
+2026-02-20T18:29:12.400Z [INFO] [ws] Session resumed: bcc66b29-8d65-41de-8871-398d9d7b3c5f
+2026-02-20T18:29:12.421Z [INFO] [ws] Session resumed: bcc66b29-8d65-41de-8871-398d9d7b3c5f
+2026-02-20T18:29:17.642Z [INFO] [ws] Received: resume_session (session: 51b17798-a6fd-469a-9a74-500ba2cf723f)
+2026-02-20T18:29:17.643Z [INFO] [ws] Session resumed: 51b17798-a6fd-469a-9a74-500ba2cf723f
+2026-02-20T18:29:17.644Z [INFO] [ws] Skipping duplicate listener for session 51b17798-a6fd-469a-9a74-500ba2cf723f — already wired
+2026-02-20T18:29:25.784Z [INFO] [ws] Received: message
+2026-02-20T18:29:25.803Z [INFO] [ws] Session resumed: 90f100fb-a598-4882-923c-c9ca3dab5f63
+2026-02-20T18:29:40.715Z [INFO] [ws] Received: create_session
+2026-02-20T18:29:40.717Z [INFO] [claude] Spawning: claude --output-format stream-json --verbose --input-format stream-json --dangerously-skip-permissions (cwd: /Users/glennprime)
+2026-02-20T18:29:42.684Z [INFO] [ws] Session created: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:29:42.715Z [INFO] [ws] Session created: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:30:03.865Z [INFO] [ws] Received: message
+2026-02-20T18:30:03.896Z [INFO] [ws] Session created: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:30:17.695Z [INFO] [ws] Received: resume_session (session: bcc66b29-8d65-41de-8871-398d9d7b3c5f)
+2026-02-20T18:30:17.696Z [INFO] [ws] Session resumed: bcc66b29-8d65-41de-8871-398d9d7b3c5f
+2026-02-20T18:30:17.697Z [INFO] [ws] Wired existing process for session bcc66b29-8d65-41de-8871-398d9d7b3c5f
+2026-02-20T18:30:26.709Z [INFO] [ws] Received: resume_session (session: 339f27a8-fcd3-44de-a2db-1425a7f199b4)
+2026-02-20T18:30:26.723Z [INFO] [ws] Session resumed: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:30:26.724Z [INFO] [ws] Wired existing process for session 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:30:28.513Z [INFO] [ws] Received: message
+2026-02-20T18:30:28.528Z [INFO] [ws] Session created: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:30:50.913Z [INFO] [ws] Received: message
+2026-02-20T18:30:50.926Z [INFO] [ws] Session created: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:31:27.952Z [INFO] [ws] Received: message
+2026-02-20T18:31:28.034Z [INFO] [ws] Session created: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:31:47.801Z [INFO] [ws] Received: message
+2026-02-20T18:31:47.817Z [INFO] [ws] Session created: 339f27a8-fcd3-44de-a2db-1425a7f199b4
+2026-02-20T18:32:14.237Z [INFO] [ws] Received: message

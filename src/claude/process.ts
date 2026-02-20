@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import { appendFileSync } from 'fs';
 import { join } from 'path';
 import type { SDKMessage, StdinMessage, ContentBlock } from './types.js';
+import { log } from '../logger.js';
 
 const DEBUG_LOG = join(import.meta.dirname, '..', '..', 'data', 'claude-debug.log');
 function debugLog(msg: string): void {
@@ -23,14 +24,14 @@ export class ClaudeProcess extends EventEmitter {
 
   constructor(private options: ClaudeProcessOptions = {}) {
     super();
+    this.setMaxListeners(50); // Prevent warnings from multiple broadcast listeners
   }
 
   start(): void {
     const args = [
       '--output-format', 'stream-json',
       '--verbose',
-      '--input-format', 'stream-json',
-      '--dangerously-skip-permissions',
+      '--input-format', 'stream-json', '--dangerously-skip-permissions',
     ];
 
     if (this.options.model) {
@@ -43,6 +44,8 @@ export class ClaudeProcess extends EventEmitter {
 
     const env = this.getCleanEnv();
     env.CLAUDE_CODE_ENTRYPOINT = 'sdk-ts';
+
+    log('claude', `Spawning: claude ${args.join(' ')} (cwd: ${this.options.cwd || process.cwd()})`);
 
     this.child = spawn('claude', args, {
       cwd: this.options.cwd || process.cwd(),
@@ -74,11 +77,13 @@ export class ClaudeProcess extends EventEmitter {
     });
 
     this.child.on('close', (code) => {
+      log('claude', `Process exited with code ${code} (session: ${this.sessionId})`);
       this.alive = false;
       this.emit('close', code);
     });
 
     this.child.on('error', (err) => {
+      log('claude', `Process error: ${err.message} (session: ${this.sessionId})`, 'error');
       this.alive = false;
       this.emit('error', err);
     });
@@ -108,7 +113,7 @@ export class ClaudeProcess extends EventEmitter {
         subtype: 'success',
         request_id: requestId,
         response: allow
-          ? { behavior: 'allow', updatedInput: originalInput || {} }
+          ? { behavior: 'allow' as const, updatedInput: (originalInput || {}) as Record<string, unknown> }
           : { behavior: 'deny', message: 'User denied permission' },
       },
     });

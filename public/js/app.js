@@ -167,6 +167,7 @@ function handleMessage(msg) {
   if (msg.type === 'system' && msg.session_id) {
     sessionUI.setCurrentSession(msg.session_id);
     chat.setSession(msg.session_id);
+    wsClient.setActiveSession(msg.session_id);
     creatingSession = false;
 
     // Send any queued message now that session is ready
@@ -188,6 +189,34 @@ function handleMessage(msg) {
     chat.migrateSessionId(msg.oldSessionId, msg.newSessionId);
     sessionUI.currentSessionId = msg.newSessionId;
     chat.sessionId = msg.newSessionId;
+    wsClient.setActiveSession(msg.newSessionId);
+  }
+
+  // Reconnect: successfully rejoined running session
+  if (msg.type === 'session_rejoined') {
+    // Already re-associated server-side, nothing else needed
+  }
+
+  // Reconnect: process died while we were disconnected — auto-resume
+  if (msg.type === 'session_not_running') {
+    chat.addSystemMessage('Session process ended — reconnecting...');
+    wsClient.send({ type: 'resume_session', sessionId: msg.sessionId || wsClient.activeSessionId });
+  }
+
+  // Server is auto-resuming after a crash
+  if (msg.type === 'session_reconnecting') {
+    chat.addSystemMessage(`Reconnecting to Claude... (attempt ${msg.attempt}/${msg.maxAttempts})`);
+  }
+
+  // Server successfully auto-resumed
+  if (msg.type === 'session_reconnected') {
+    chat.addSystemMessage('Reconnected.');
+  }
+
+  // Server gave up trying to auto-resume
+  if (msg.type === 'session_crashed') {
+    chat.addSystemMessage(msg.error || 'Session crashed. Please resume manually.');
+    document.getElementById('abort-btn').classList.remove('active');
   }
 
   // User message from another device — show it
