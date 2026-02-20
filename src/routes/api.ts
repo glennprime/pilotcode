@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { randomBytes } from 'crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
-import { DATA_DIR, IMAGES_DIR } from '../config.js';
+import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
 import { requireAuth } from './auth.js';
 
@@ -110,6 +110,21 @@ export function createApiRouter(manager: SessionManager): Router {
     const trimmed = entries.slice(-500);
     writeFileSync(file, JSON.stringify(trimmed));
     res.json({ ok: true });
+  });
+
+  // List directories for the session CWD picker
+  router.get('/api/directories', requireAuth, (req: Request, res: Response) => {
+    const parentPath = typeof req.query.path === 'string' && req.query.path ? req.query.path : DEFAULT_CWD;
+    try {
+      const entries = readdirSync(parentPath, { withFileTypes: true });
+      const dirs = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .map((e) => ({ name: e.name, path: join(parentPath, e.name) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      res.json({ parent: parentPath, directories: dirs });
+    } catch {
+      res.status(400).json({ error: 'Cannot read directory' });
+    }
   });
 
   // Health

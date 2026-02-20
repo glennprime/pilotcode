@@ -8,7 +8,7 @@ PilotCode is a self-hosted web UI that lets users control Claude Code from any b
 
 - **Backend**: Express + `ws` WebSocket server (TypeScript, port 3456)
 - **Frontend**: Vanilla HTML/CSS/JS (no build step, no framework)
-- **Claude Integration**: Spawns `claude` CLI with `--output-format stream-json --input-format stream-json --permission-prompt-tool stdio`
+- **Claude Integration**: Spawns `claude` CLI with `--output-format stream-json --verbose --input-format stream-json --dangerously-skip-permissions`
 - **Storage**: File-based (JSON files in `data/`), no database
 - **Auth**: Random token generated on first run, stored in `data/config.json`, validated via HTTP-only cookie
 - **Remote Access**: Cloudflare Tunnel (optional) for HTTPS access from anywhere
@@ -78,6 +78,26 @@ These were discovered during development and are now resolved:
 6. **Duplicate sessions on resume** — Claude returns a new session ID on resume. Fixed to update existing entry instead of creating duplicate.
 7. **Tool use labels cluttering chat** — Hidden via CSS; spinner shows friendly labels instead (e.g. "Running command..." for Bash).
 8. **Chat history not syncing across devices** — Moved from localStorage to server-side `data/history/<sessionId>.json`.
+9. **`--auto-compact` flag does not exist** — Claude CLI has no `--auto-compact` CLI flag. Auto-compact is controlled via Claude's settings file (`~/.claude/settings.json`), not via spawn args. Do NOT add this flag to `process.ts` — it causes immediate exit code 1.
+
+## Launchd Services
+
+PilotCode runs as launchd services for auto-start on boot and auto-restart on crash:
+
+- `com.pilotcode.server` — The Node.js server (`~/Library/LaunchAgents/com.pilotcode.server.plist`)
+- `com.pilotcode.tunnel` — Cloudflare Tunnel for remote access (`~/Library/LaunchAgents/com.pilotcode.tunnel.plist`)
+
+**Management commands:**
+- `launchctl load ~/Library/LaunchAgents/com.pilotcode.server.plist` — Enable service
+- `launchctl unload ~/Library/LaunchAgents/com.pilotcode.server.plist` — Disable service
+- `launchctl stop com.pilotcode.server` — Stop (will auto-restart due to KeepAlive)
+- To fully stop for development: `launchctl unload` the plist, then run `npm start` manually
+
+**Important:** Because launchd auto-restarts the process, you cannot restart the server by killing the PID — it will just respawn. Always use `launchctl unload` to stop the service before running the server manually.
+
+## macOS Permissions
+
+Node.js must have **Full Disk Access** in System Settings → Privacy & Security to avoid macOS TCC permission popups (especially important for remote/headless operation). The node binary path is version-specific (e.g. `~/.nvm/versions/node/v22.20.0/bin/node`) and must be re-added after Node version changes.
 
 ## Important Notes
 

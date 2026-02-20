@@ -259,7 +259,9 @@ function wireProcess(
         if (existing) {
           existing.id = sid;
           existing.lastUsed = new Date().toISOString();
-          manager.saveSessions(sessions);
+          // Remove any stale duplicate entries for the new ID
+          const cleaned = sessions.filter((s) => s === existing || s.id !== sid);
+          manager.saveSessions(cleaned);
         } else {
           manager.saveSession({ id: sid, name, cwd, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
         }
@@ -272,7 +274,21 @@ function wireProcess(
           sessionClients.delete(replacesSessionId);
         }
       } else {
-        manager.saveSession({ id: sid, name, cwd, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
+        // Remove any stale entries with the same name+cwd that have no running process
+        const sessions = manager.loadSessions();
+        const activeIds = manager.listActive();
+        const cleaned = sessions.filter((s) =>
+          s.id === sid || !(s.name === name && s.cwd === cwd && !activeIds.includes(s.id))
+        );
+        cleaned.push({ id: sid, name, cwd, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
+        // Deduplicate by id (in case this id already exists)
+        const seen = new Set<string>();
+        const deduped = cleaned.filter((s) => {
+          if (seen.has(s.id)) return false;
+          seen.add(s.id);
+          return true;
+        });
+        manager.saveSessions(deduped);
       }
 
       // Broadcast session ID update to all clients

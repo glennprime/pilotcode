@@ -66,8 +66,9 @@
       <h3>New Session</h3>
       <label for="session-name-input">Name</label>
       <input id="session-name-input" type="text" placeholder="My Project">
-      <label for="session-cwd-input">Working Directory</label>
-      <input id="session-cwd-input" type="text" placeholder="/path/to/your/project">
+      <label for="session-cwd-select">Working Directory</label>
+      <div id="cwd-breadcrumb" class="cwd-breadcrumb"></div>
+      <select id="session-cwd-select" size="6"></select>
       <div class="modal-actions">
         <button id="modal-cancel" class="btn-secondary">Cancel</button>
         <button id="modal-create" class="btn-primary">Create</button>
