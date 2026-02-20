@@ -6,6 +6,7 @@ export interface SessionMeta {
   id: string;
   name: string;
   cwd: string;
+  model?: string;
   createdAt: string;
   lastUsed: string;
 }

@@ -59,7 +59,7 @@ export class SessionUI {
           <button class="session-rename-btn" title="Rename">&#9998;</button>
           <button class="session-delete-btn" title="Delete">&times;</button>
         </div>
-        <div class="session-item-meta">${escapeHtml(s.cwd)} &middot; ${timeAgo(s.lastUsed)}</div>
+        <div class="session-item-meta">${escapeHtml(s.cwd)} &middot; ${s.model ? shortModel(s.model) : 'Sonnet'} &middot; ${timeAgo(s.lastUsed)}</div>
       `;
 
       // Click to resume
@@ -206,10 +206,11 @@ export class SessionUI {
     const cwdPath = this.selectedCwd || undefined;
     const dirName = cwdPath ? cwdPath.split('/').filter(Boolean).pop() : null;
     const name = document.getElementById('session-name-input').value.trim() || dirName || 'New Session';
+    const model = document.getElementById('session-model-select').value || undefined;
 
     // Mark as creating so sendMessage() won't auto-create another
     this.currentSessionId = '__creating__';
-    this.wsClient.send({ type: 'create_session', name, cwd: cwdPath });
+    this.wsClient.send({ type: 'create_session', name, cwd: cwdPath, model });
     this.hideNewSessionModal();
     this.closeDrawer();
     this.onSessionChange(name, null);
@@ -242,6 +243,12 @@ export class SessionUI {
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function shortModel(model) {
+  if (model.includes('opus')) return 'Opus';
+  if (model.includes('haiku')) return 'Haiku';
+  return 'Sonnet';
 }
 
 function timeAgo(dateStr) {

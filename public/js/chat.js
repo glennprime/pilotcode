@@ -135,9 +135,8 @@ export class Chat {
   handleSDKMessage(msg, onPermissionResponse) {
     switch (msg.type) {
       case 'system':
-        if (msg.subtype === 'init') {
-          this.addSystemMessage('Session started');
-        }
+        // Don't show "Session started" — it fires on every resume too.
+        // The session_resumed handler already shows a message when relevant.
         break;
 
       case 'assistant': {
@@ -301,6 +300,7 @@ export class Chat {
     this.currentAssistantEl = null;
     this.currentAssistantText = '';
     this.isStreaming = false;
+    this.activeTasks.clear();
     this.sessionId = newSessionId;
     this.history = [];
 
