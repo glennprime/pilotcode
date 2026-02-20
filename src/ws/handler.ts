@@ -313,6 +313,12 @@ function handleCreateSession(
     proc, knownSessionId: null, manager, name, cwd,
     model, setCurrent, originWs: ws,
   });
+
+  // Claude CLI (2.1.49+) with --input-format stream-json won't emit the
+  // system init message until it receives the first user message on stdin.
+  // Send the initial message immediately to kick-start the session.
+  const initMessage = msg.initialMessage || 'hello';
+  proc.sendMessage(initMessage);
 }
 
 function handleResumeSession(
@@ -373,6 +379,10 @@ function handleResumeSession(
       proc, knownSessionId: null, manager, name, cwd,
       model, replacesSessionId: sessionId, setCurrent, originWs: ws,
     });
+
+    // Claude CLI (2.1.49+) won't emit system init until first stdin message.
+    // For resume, send a brief continuation prompt to kick-start it.
+    proc.sendMessage('continue');
   } else {
     // No valid session found — start fresh in the same cwd with same model
     sessionLog('RESUME_FRESH', { requestedId: sessionId, name, cwd, model: model || 'default', reason: 'no_valid_session' });
@@ -388,6 +398,9 @@ function handleResumeSession(
       proc, knownSessionId: null, manager, name, cwd,
       model, setCurrent, originWs: ws,
     });
+
+    // Kick-start fresh session too
+    proc.sendMessage('hello');
   }
 }
 

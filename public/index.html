@@ -70,6 +70,10 @@
         <option value="">Loading models...</option>
       </select>
       <label for="session-cwd-select">Working Directory</label>
+      <div class="cwd-path-row">
+        <input id="cwd-path-input" type="text" placeholder="/path/to/directory" spellcheck="false" autocomplete="off">
+        <button id="cwd-path-go" class="btn-secondary" type="button">Go</button>
+      </div>
       <div id="cwd-breadcrumb" class="cwd-breadcrumb"></div>
       <select id="session-cwd-select" size="6"></select>
       <div class="modal-actions">

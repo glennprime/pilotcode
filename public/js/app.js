@@ -132,7 +132,7 @@ function sendMessage() {
     // Clear old session content before creating new one
     chat.clear();
     sessionGreeted = false;
-    wsClient.send({ type: 'create_session', name });
+    wsClient.send({ type: 'create_session', name, initialMessage: text });
     // Clear input immediately
     input.value = '';
     input.style.height = 'auto';
@@ -171,17 +171,13 @@ function handleMessage(msg) {
         wsClient.setActiveSession(msg.session_id);
         creatingSession = false;
 
-        // Send any queued message now that session is ready
+        // Show queued message in chat (already sent to Claude via initialMessage)
         if (pendingMessage) {
-          const { text, images, pendingImages } = pendingMessage;
+          const { text, pendingImages } = pendingMessage;
           pendingMessage = null;
           sessionGreeted = true;
           chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
-          wsClient.send({
-            type: 'message',
-            content: text,
-            images: images.length > 0 ? images : undefined,
-          });
+          chat.showThinking('Thinking...');
         } else if (!sessionGreeted) {
           // Auto-greet: session created from modal with no message queued
           sessionGreeted = true;
