@@ -6,6 +6,7 @@ export class WSClient {
     this.reconnectDelay = 1000;
     this.maxReconnectDelay = 30000;
     this.shouldReconnect = true;
+    this.activeSessionId = null;
   }
 
   connect() {
@@ -18,6 +19,11 @@ export class WSClient {
     this.ws.onopen = () => {
       this.onStatusChange('connected');
       this.reconnectDelay = 1000;
+
+      // Re-associate with the active session after reconnecting
+      if (this.activeSessionId) {
+        this.send({ type: 'rejoin_session', sessionId: this.activeSessionId });
+      }
     };
 
     this.ws.onmessage = (e) => {
@@ -52,6 +58,10 @@ export class WSClient {
       return true;
     }
     return false;
+  }
+
+  setActiveSession(sessionId) {
+    this.activeSessionId = sessionId;
   }
 
   disconnect() {

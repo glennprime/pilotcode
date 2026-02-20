@@ -154,6 +154,7 @@ export class SessionUI {
   resumeSession(sessionId, name) {
     if (sessionId === this.currentSessionId) return; // already active
     this.currentSessionId = sessionId;
+    this.wsClient.setActiveSession(sessionId);
     this.wsClient.send({ type: 'resume_session', sessionId });
     document.getElementById('session-name').textContent = name || sessionId.slice(0, 8);
     this.onSessionChange(name, sessionId);
