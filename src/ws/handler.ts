@@ -2,13 +2,15 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import { parse as parseCookie } from 'cookie';
 import { timingSafeEqual } from 'crypto';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { SessionManager } from '../claude/manager.js';
 import { ClaudeProcess } from '../claude/process.js';
-import { getAuthToken, IMAGES_DIR, DEFAULT_CWD } from '../config.js';
+import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DATA_DIR } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
 import { log } from '../logger.js';
+
+const HISTORY_DIR = join(DATA_DIR, 'history');
 
 interface WSMessage {
   type: string;
@@ -62,6 +64,31 @@ function bufferMessage(sessionId: string, data: string): void {
 
 function getBufferedMessages(sessionId: string): string[] {
   return sessionMessageBuffers.get(sessionId) || [];
+}
+
+/** Copy history file from old session ID to new session ID (server-side). */
+function migrateHistory(oldId: string, newId: string): void {
+  if (oldId === newId) return;
+  try {
+    const oldFile = join(HISTORY_DIR, `${oldId}.json`);
+    const newFile = join(HISTORY_DIR, `${newId}.json`);
+    if (existsSync(oldFile)) {
+      const data = readFileSync(oldFile, 'utf-8');
+      // Only copy if old file has real content
+      if (data.length > 2) {
+        writeFileSync(newFile, data);
+        log('ws', `Migrated history: ${oldId.slice(0, 8)} → ${newId.slice(0, 8)}`);
+      }
+    }
+    // Also migrate message buffer
+    const oldBuf = sessionMessageBuffers.get(oldId);
+    if (oldBuf && oldBuf.length > 0) {
+      sessionMessageBuffers.set(newId, oldBuf);
+      sessionMessageBuffers.delete(oldId);
+    }
+  } catch (err) {
+    log('ws', `History migration failed: ${err}`, 'warn');
+  }
 }
 
 /** Send to all clients in a session EXCEPT the excluded one. Tags with _sid. */
@@ -142,6 +169,10 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
 
     let currentProc: ClaudeProcess | null = null;
     let currentSessionId: string | null = null;
+    // Track the process even before setCurrent fires (during init).
+    // This prevents messages from being silently dropped if the user
+    // types before Claude's system message arrives.
+    let pendingProc: ClaudeProcess | null = null;
 
     ws.on('message', (raw) => {
       let msg: WSMessage;
@@ -160,12 +191,14 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           removeClient(ws);
           currentSessionId = null;
           currentProc = null;
+          pendingProc = null;
           handleCreateSession(ws, msg, manager, (proc, sid) => {
             currentProc = proc;
+            pendingProc = null;
             currentSessionId = sid;
             addClient(sid, ws);
             log('ws', `Session created: ${sid}`);
-          });
+          }, (proc) => { pendingProc = proc; });
           break;
 
         case 'resume_session':
@@ -173,16 +206,19 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           removeClient(ws);
           currentSessionId = null;
           currentProc = null;
+          pendingProc = null;
           handleResumeSession(ws, msg, manager, (proc, sid) => {
             currentProc = proc;
+            pendingProc = null;
             currentSessionId = sid;
             addClient(sid, ws);
             log('ws', `Session resumed: ${sid}`);
-          });
+          }, (proc) => { pendingProc = proc; });
           break;
 
         case 'message':
-          handleUserMessage(ws, msg, currentProc, currentSessionId);
+          // Use pendingProc as fallback if session init hasn't completed yet
+          handleUserMessage(ws, msg, currentProc || pendingProc, currentSessionId);
           break;
 
         case 'permission_response':
@@ -223,13 +259,15 @@ function handleCreateSession(
   ws: WebSocket,
   msg: WSMessage,
   manager: SessionManager,
-  setCurrent: (proc: ClaudeProcess, sid: string) => void
+  setCurrent: (proc: ClaudeProcess, sid: string) => void,
+  onProcSpawned?: (proc: ClaudeProcess) => void
 ): void {
   const cwd = msg.cwd || DEFAULT_CWD;
   const name = msg.name || 'New Session';
   const model = msg.model || undefined;
 
   const proc = manager.createProcess({ cwd, model });
+  if (onProcSpawned) onProcSpawned(proc);
   wireProcess(ws, proc, manager, name, cwd, setCurrent, undefined, model);
 }
 
@@ -237,7 +275,8 @@ function handleResumeSession(
   ws: WebSocket,
   msg: WSMessage,
   manager: SessionManager,
-  setCurrent: (proc: ClaudeProcess, sid: string) => void
+  setCurrent: (proc: ClaudeProcess, sid: string) => void,
+  onProcSpawned?: (proc: ClaudeProcess) => void
 ): void {
   const { sessionId } = msg;
   if (!sessionId) {
@@ -249,6 +288,7 @@ function handleResumeSession(
   let proc = manager.getProcess(sessionId);
   if (proc && proc.isAlive) {
     setCurrent(proc, sessionId);
+    if (onProcSpawned) onProcSpawned(proc);
     // Send session_rejoined so client knows to expect buffer replay
     ws.send(JSON.stringify({ type: 'session_rejoined', sessionId }));
     // Replay buffered messages — only display-relevant types
@@ -274,6 +314,7 @@ function handleResumeSession(
   const model = meta?.model;
 
   proc = manager.createProcess({ cwd, resume: sessionId, model });
+  if (onProcSpawned) onProcSpawned(proc);
   wireProcess(ws, proc, manager, name, cwd, setCurrent, sessionId, model);
 }
 
@@ -362,6 +403,9 @@ function ensureBroadcastWired(
           }
           manager.registerProcess(sid, proc);
 
+          // Migrate history and message buffer from old ID to new
+          migrateHistory(replacesSessionId, sid);
+
           // Migrate clients from old session ID to new
           const oldClients = sessionClients.get(replacesSessionId);
           if (oldClients) {
@@ -416,7 +460,21 @@ function ensureBroadcastWired(
   proc.on('close', (code: number) => {
     log('claude', `Process closed with code ${code}, sessionId=${sessionId}`);
     if (!sessionId) {
-      log('claude', 'Process closed before session ID was assigned — cannot auto-resume', 'warn');
+      // Process died before getting a session ID (e.g. --resume failed).
+      // Use replacesSessionId as fallback to notify the client.
+      const fallbackSid = replacesSessionId || null;
+      log('claude', `Process closed before session ID assigned. fallback=${fallbackSid}`, 'warn');
+      if (fallbackSid) {
+        broadcastAll(fallbackSid, JSON.stringify({
+          type: 'process_exit', code,
+          error: 'Session process failed to start. Try creating a new session.',
+        }));
+      } else if (originWs && originWs.readyState === WebSocket.OPEN) {
+        originWs.send(JSON.stringify({
+          type: 'process_exit', code,
+          error: 'Session process failed to start.',
+        }));
+      }
       return;
     }
 
