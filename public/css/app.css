@@ -421,13 +421,6 @@ html, body {
   border: 1px solid var(--border);
 }
 
-#abort-btn {
-  background: var(--red);
-  color: #fff;
-  display: none;
-}
-
-#abort-btn.active { display: flex; }
 
 /* ── Image Preview ── */
 #image-preview {
