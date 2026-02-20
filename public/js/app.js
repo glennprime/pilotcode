@@ -162,99 +162,97 @@ function doSend(text, images) {
 }
 
 function handleMessage(msg) {
-  console.log("[APP-DEBUG] handleMessage type:", msg.type, "subtype:", msg.subtype);
-  // Track session ID from init — only process once per session
-  if (msg.type === 'system' && msg.session_id && msg.session_id !== chat.sessionId) {
-    sessionUI.setCurrentSession(msg.session_id);
-    chat.setSession(msg.session_id);
-    wsClient.setActiveSession(msg.session_id);
-    creatingSession = false;
+  switch (msg.type) {
+    // Track session ID from init — only process once per session
+    case 'system':
+      if (msg.session_id && msg.session_id !== chat.sessionId) {
+        sessionUI.setCurrentSession(msg.session_id);
+        chat.setSession(msg.session_id);
+        wsClient.setActiveSession(msg.session_id);
+        creatingSession = false;
 
-    // Send any queued message now that session is ready
-    if (pendingMessage) {
-      const { text, images, pendingImages } = pendingMessage;
-      pendingMessage = null;
-      sessionGreeted = true;
-      chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
-      wsClient.send({
-        type: 'message',
-        content: text,
-        images: images.length > 0 ? images : undefined,
-      });
-    
-    } else if (!sessionGreeted) {
-      // Auto-greet: session created from modal with no message queued
-      sessionGreeted = true;
-      chat.addUserMessage('hello');
-      wsClient.send({ type: 'message', content: 'hello' });
-    
+        // Send any queued message now that session is ready
+        if (pendingMessage) {
+          const { text, images, pendingImages } = pendingMessage;
+          pendingMessage = null;
+          sessionGreeted = true;
+          chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
+          wsClient.send({
+            type: 'message',
+            content: text,
+            images: images.length > 0 ? images : undefined,
+          });
+        } else if (!sessionGreeted) {
+          // Auto-greet: session created from modal with no message queued
+          sessionGreeted = true;
+          chat.addUserMessage('hello');
+          wsClient.send({ type: 'message', content: 'hello' });
+          chat.showThinking('Thinking...');
+        }
+      }
+      break;
+
+    // Session ID changed after resume — migrate server-side history
+    case 'session_id_update':
+      if (msg.oldSessionId !== msg.newSessionId) {
+        chat.migrateSessionId(msg.oldSessionId, msg.newSessionId);
+        sessionUI.currentSessionId = msg.newSessionId;
+        chat.sessionId = msg.newSessionId;
+        wsClient.setActiveSession(msg.newSessionId);
+      }
+      break;
+
+    // Reconnect: successfully rejoined running session — buffer replay incoming
+    case 'session_rejoined':
+      // Suppress the ding during buffer replay so switching sessions isn't noisy
+      dingSuppressed = true;
+      setTimeout(() => { dingSuppressed = false; }, 2000);
+      break;
+
+    // Reconnect: process died while we were disconnected — auto-resume once
+    case 'session_not_running': {
+      const sid = msg.sessionId || wsClient.activeSessionId;
+      if (sid) chat.loadHistory(sid);
+      if (sid && !sessionUI._resumeAttempted?.has(sid)) {
+        if (!sessionUI._resumeAttempted) sessionUI._resumeAttempted = new Set();
+        sessionUI._resumeAttempted.add(sid);
+        chat.addSystemMessage('Session ended — resuming...');
+        wsClient.send({ type: 'resume_session', sessionId: sid });
+      } else {
+        chat.addSystemMessage('Session ended. Tap the session in the sidebar to resume.');
+      }
+      break;
+    }
+
+    case 'session_reconnecting':
+      chat.addSystemMessage(`Reconnecting to Claude... (attempt ${msg.attempt}/${msg.maxAttempts})`);
+      break;
+
+    case 'session_reconnected':
+      chat.addSystemMessage('Reconnected.');
+      break;
+
+    case 'session_crashed':
+      chat.addSystemMessage(msg.error || 'Session crashed. Please resume manually.');
+      break;
+
+    // User message from another device
+    case 'user_broadcast': {
+      const images = (msg.images || []).map((f) => ({ filename: f, objectUrl: `/data/images/${f}` }));
+      chat.addUserMessage(msg.content || '', images.length ? images : undefined);
       chat.showThinking('Thinking...');
+      break;
     }
+
+    // Play notification ding on successful result
+    case 'result':
+      if (!msg.is_error && !dingSuppressed) {
+        playDing();
+      }
+      break;
   }
 
-  // Session ID changed after resume — migrate server-side history
-  if (msg.type === 'session_id_update' && msg.oldSessionId !== msg.newSessionId) {
-    chat.migrateSessionId(msg.oldSessionId, msg.newSessionId);
-    sessionUI.currentSessionId = msg.newSessionId;
-    chat.sessionId = msg.newSessionId;
-    wsClient.setActiveSession(msg.newSessionId);
-  }
-
-  // Reconnect: successfully rejoined running session — buffer replay incoming
-  if (msg.type === 'session_rejoined') {
-    // Don't clear chat — loadHistory already rendered the conversation.
-    // Just suppress the ding during buffer replay so switching sessions isn't noisy.
-    dingSuppressed = true;
-    setTimeout(() => { dingSuppressed = false; }, 2000);
-  }
-
-  // Reconnect: process died while we were disconnected — auto-resume once
-  if (msg.type === 'session_not_running') {
-    const sid = msg.sessionId || wsClient.activeSessionId;
-    // Load saved history so user sees past conversation
-    if (sid) chat.loadHistory(sid);
-    if (sid && !sessionUI._resumeAttempted?.has(sid)) {
-      if (!sessionUI._resumeAttempted) sessionUI._resumeAttempted = new Set();
-      sessionUI._resumeAttempted.add(sid);
-      chat.addSystemMessage('Session ended — resuming...');
-      wsClient.send({ type: 'resume_session', sessionId: sid });
-    } else {
-      chat.addSystemMessage('Session ended. Tap the session in the sidebar to resume.');
-    }
-  }
-
-  // Server is auto-resuming after a crash
-  if (msg.type === 'session_reconnecting') {
-    chat.addSystemMessage(`Reconnecting to Claude... (attempt ${msg.attempt}/${msg.maxAttempts})`);
-  }
-
-  // Server successfully auto-resumed
-  if (msg.type === 'session_reconnected') {
-    chat.addSystemMessage('Reconnected.');
-  }
-
-  // Server gave up trying to auto-resume
-  if (msg.type === 'session_crashed') {
-    chat.addSystemMessage(msg.error || 'Session crashed. Please resume manually.');
-
-  }
-
-  // User message from another device — show it
-  if (msg.type === 'user_broadcast') {
-    const images = (msg.images || []).map((f) => ({ filename: f, objectUrl: `/data/images/${f}` }));
-    chat.addUserMessage(msg.content || '', images.length ? images : undefined);
-    chat.showThinking('Thinking...');
-  
-  }
-
-  // Hide abort button on result + play notification (only on success, not errors)
-  if (msg.type === 'result' || msg.type === 'process_exit') {
-
-    if (msg.type === 'result' && !msg.is_error && !dingSuppressed) {
-      playDing();
-    }
-  }
-
+  // Always forward to Chat for SDK message handling (assistant text, tool use, permissions, etc.)
   chat.handleSDKMessage(msg, (requestId, allow) => {
     wsClient.send({
       type: 'permission_response',

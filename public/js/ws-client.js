@@ -29,7 +29,6 @@ export class WSClient {
     this.ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        console.log("[WS-DEBUG] raw msg:", msg.type, "_sid:", msg._sid);
 
         // Strip internal session tag before passing to the app.
         // Session isolation is handled server-side: the server immediately
