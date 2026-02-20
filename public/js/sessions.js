@@ -178,16 +178,20 @@ export class SessionUI {
       this.currentBrowsePath = data.parent;
       this.selectedCwd = data.parent;
 
-      // Render breadcrumb
+      // Update path input
+      const pathInput = document.getElementById('cwd-path-input');
+      pathInput.value = data.parent;
+
+      // Render breadcrumb with root
       const parts = data.parent.split('/').filter(Boolean);
-      let html = '';
+      let html = `<span class="crumb${parts.length === 0 ? ' active' : ''}" data-path="/">/</span>`;
       let accumulated = '';
       for (let i = 0; i < parts.length; i++) {
         accumulated += '/' + parts[i];
         const path = accumulated;
         const isLast = i === parts.length - 1;
+        html += `<span class="crumb-sep">/</span>`;
         html += `<span class="crumb${isLast ? ' active' : ''}" data-path="${escapeHtml(path)}">${escapeHtml(parts[i])}</span>`;
-        if (!isLast) html += '<span class="crumb-sep">/</span>';
       }
       breadcrumb.innerHTML = html;
       breadcrumb.querySelectorAll('.crumb:not(.active)').forEach((el) => {
@@ -224,6 +228,45 @@ export class SessionUI {
         this.selectedCwd = select.value;
       }
     });
+
+    // Path input: type a path and press Enter or click Go
+    const pathInput = document.getElementById('cwd-path-input');
+    const goBtn = document.getElementById('cwd-path-go');
+    const navigateToInput = () => {
+      const val = pathInput.value.trim();
+      if (val) this.loadDirectories(val);
+    };
+    goBtn.addEventListener('click', navigateToInput);
+    pathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); navigateToInput(); }
+    });
+
+    // "qq" tab-completion: typing two q's in a row triggers directory completion
+    pathInput.addEventListener('input', () => {
+      const val = pathInput.value;
+      if (!val.endsWith('qq')) return;
+      // Strip the "qq" trigger
+      const partial = val.slice(0, -2);
+      pathInput.value = partial;
+      this.completePath(pathInput);
+    });
+  }
+
+  async completePath(pathInput) {
+    const partial = pathInput.value.trim();
+    if (!partial) return;
+    try {
+      const res = await fetch(`/api/complete-path?path=${encodeURIComponent(partial)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.completed !== partial) {
+        pathInput.value = data.completed;
+        // If single match completed to a full directory, also refresh the browser below
+        if (data.matches.length === 1) {
+          this.loadDirectories(data.completed);
+        }
+      }
+    } catch { /* offline */ }
   }
 
   createSession() {

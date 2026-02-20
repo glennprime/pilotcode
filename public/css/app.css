@@ -666,6 +666,25 @@ html, body {
 #session-model-select:focus { border-color: var(--accent); }
 
 /* CWD directory picker */
+.cwd-path-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.cwd-path-row input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+.cwd-path-row input:focus { border-color: var(--accent); }
+.cwd-path-row .btn-secondary { padding: 8px 14px; flex-shrink: 0; }
+
 .cwd-breadcrumb {
   display: flex;
   flex-wrap: wrap;

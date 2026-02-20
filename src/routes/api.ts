@@ -136,6 +136,51 @@ export function createApiRouter(manager: SessionManager): Router {
     ]);
   });
 
+  // Path completion for CWD picker
+  router.get('/api/complete-path', requireAuth, (req: Request, res: Response) => {
+    const partial = typeof req.query.path === 'string' ? req.query.path : '';
+    if (!partial.startsWith('/')) {
+      res.json({ completed: partial, matches: [] });
+      return;
+    }
+
+    // Split into parent directory and prefix to match against
+    const lastSlash = partial.lastIndexOf('/');
+    const parentDir = partial.substring(0, lastSlash) || '/';
+    const prefix = partial.substring(lastSlash + 1);
+
+    try {
+      const entries = readdirSync(parentDir, { withFileTypes: true });
+      const matches = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.') && e.name.startsWith(prefix))
+        .map((e) => e.name)
+        .sort();
+
+      if (matches.length === 1) {
+        // Single match — complete it fully
+        const completed = join(parentDir, matches[0]) + '/';
+        res.json({ completed, matches });
+      } else if (matches.length > 1) {
+        // Multiple matches — complete to longest common prefix
+        let common = matches[0];
+        for (let i = 1; i < matches.length; i++) {
+          let j = 0;
+          while (j < common.length && j < matches[i].length && common[j] === matches[i][j]) j++;
+          common = common.substring(0, j);
+        }
+        const completed = common.length > prefix.length
+          ? parentDir + (parentDir === '/' ? '' : '/') + common
+          : partial;
+        res.json({ completed, matches });
+      } else {
+        // No matches
+        res.json({ completed: partial, matches: [] });
+      }
+    } catch {
+      res.json({ completed: partial, matches: [] });
+    }
+  });
+
   // Health
   router.get('/api/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', uptime: process.uptime() });
