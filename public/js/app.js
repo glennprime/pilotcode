@@ -127,7 +127,7 @@ function sendMessage() {
   if (!text && images.length === 0) return;
 
   // If no active session, create one and queue the message
-  if (!sessionUI.currentSessionId) {
+  if (!sessionUI.currentSessionId || sessionUI.currentSessionId === '__creating__') {
     if (creatingSession) return; // already creating, wait
     creatingSession = true;
     pendingMessage = { text, images, pendingImages: [...imageHandler.pendingImages] };
@@ -197,10 +197,17 @@ function handleMessage(msg) {
     // Already re-associated server-side, nothing else needed
   }
 
-  // Reconnect: process died while we were disconnected — auto-resume
+  // Reconnect: process died while we were disconnected — auto-resume once
   if (msg.type === 'session_not_running') {
-    chat.addSystemMessage('Session process ended — reconnecting...');
-    wsClient.send({ type: 'resume_session', sessionId: msg.sessionId || wsClient.activeSessionId });
+    const sid = msg.sessionId || wsClient.activeSessionId;
+    if (sid && !sessionUI._resumeAttempted?.has(sid)) {
+      if (!sessionUI._resumeAttempted) sessionUI._resumeAttempted = new Set();
+      sessionUI._resumeAttempted.add(sid);
+      chat.addSystemMessage('Session ended — resuming...');
+      wsClient.send({ type: 'resume_session', sessionId: sid });
+    } else {
+      chat.addSystemMessage('Session ended. Tap the session in the sidebar to resume.');
+    }
   }
 
   // Server is auto-resuming after a crash
@@ -227,10 +234,12 @@ function handleMessage(msg) {
     document.getElementById('abort-btn').classList.add('active');
   }
 
-  // Hide abort button on result + play notification
+  // Hide abort button on result + play notification (only on success, not errors)
   if (msg.type === 'result' || msg.type === 'process_exit') {
     document.getElementById('abort-btn').classList.remove('active');
-    playDing();
+    if (msg.type === 'result' && !msg.is_error) {
+      playDing();
+    }
   }
 
   chat.handleSDKMessage(msg, (requestId, allow) => {

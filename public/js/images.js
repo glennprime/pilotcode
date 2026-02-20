@@ -27,6 +27,55 @@ export class ImageHandler {
     this.fileInput.onchange = (e) => this.handleFiles(e.target.files);
 
     document.getElementById('image-btn').onclick = () => this.fileInput.click();
+
+    // Drag and drop support
+    this.setupDragDrop();
+  }
+
+  setupDragDrop() {
+    const dropZone = document.getElementById('messages');
+    const appView = document.getElementById('app-view');
+    let dragCounter = 0;
+
+    const showOverlay = () => {
+      if (!document.getElementById('drop-overlay')) {
+        const overlay = document.createElement('div');
+        overlay.id = 'drop-overlay';
+        overlay.innerHTML = '<div class="drop-overlay-content">Drop files here</div>';
+        appView.appendChild(overlay);
+      }
+    };
+
+    const hideOverlay = () => {
+      const overlay = document.getElementById('drop-overlay');
+      if (overlay) overlay.remove();
+    };
+
+    appView.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (dragCounter === 1) showOverlay();
+    });
+
+    appView.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter === 0) hideOverlay();
+    });
+
+    appView.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+
+    appView.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      hideOverlay();
+      if (e.dataTransfer.files.length > 0) {
+        this.handleFiles(e.dataTransfer.files);
+      }
+    });
   }
 
   async handleFiles(files) {

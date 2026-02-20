@@ -14,6 +14,9 @@ export class SessionUI {
     document.getElementById('new-session-btn').onclick = () => this.showNewSessionModal();
     document.getElementById('modal-cancel').onclick = () => this.hideNewSessionModal();
     document.getElementById('modal-create').onclick = () => this.createSession();
+    this.selectedCwd = null;
+    this.currentBrowsePath = null;
+    this.setupCwdPicker();
   }
 
   openDrawer() {
@@ -131,7 +134,8 @@ export class SessionUI {
   showNewSessionModal() {
     this.modal.classList.add('active');
     document.getElementById('session-name-input').value = '';
-    document.getElementById('session-cwd-input').value = '';
+    this.selectedCwd = null;
+    this.loadDirectories(); // load root directories
     document.getElementById('session-name-input').focus();
   }
 
@@ -139,13 +143,73 @@ export class SessionUI {
     this.modal.classList.remove('active');
   }
 
-  createSession() {
-    const name = document.getElementById('session-name-input').value.trim() || 'New Session';
-    const cwd = document.getElementById('session-cwd-input').value.trim() || undefined;
+  async loadDirectories(path) {
+    const select = document.getElementById('session-cwd-select');
+    const breadcrumb = document.getElementById('cwd-breadcrumb');
+    const url = path ? `/api/directories?path=${encodeURIComponent(path)}` : '/api/directories';
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      this.currentBrowsePath = data.parent;
+      this.selectedCwd = data.parent;
 
-    // Clear current session so the new one takes over
-    this.currentSessionId = null;
-    this.wsClient.send({ type: 'create_session', name, cwd });
+      // Render breadcrumb
+      const parts = data.parent.split('/').filter(Boolean);
+      let html = '';
+      let accumulated = '';
+      for (let i = 0; i < parts.length; i++) {
+        accumulated += '/' + parts[i];
+        const path = accumulated;
+        const isLast = i === parts.length - 1;
+        html += `<span class="crumb${isLast ? ' active' : ''}" data-path="${escapeHtml(path)}">${escapeHtml(parts[i])}</span>`;
+        if (!isLast) html += '<span class="crumb-sep">/</span>';
+      }
+      breadcrumb.innerHTML = html;
+      breadcrumb.querySelectorAll('.crumb:not(.active)').forEach((el) => {
+        el.onclick = () => this.loadDirectories(el.dataset.path);
+      });
+
+      // Render directory list
+      select.innerHTML = '';
+      if (data.directories.length === 0) {
+        const opt = document.createElement('option');
+        opt.textContent = '(no subdirectories)';
+        opt.disabled = true;
+        select.appendChild(opt);
+      } else {
+        for (const dir of data.directories) {
+          const opt = document.createElement('option');
+          opt.value = dir.path;
+          opt.textContent = dir.name;
+          select.appendChild(opt);
+        }
+      }
+    } catch { /* offline */ }
+  }
+
+  setupCwdPicker() {
+    const select = document.getElementById('session-cwd-select');
+    select.addEventListener('dblclick', () => {
+      if (select.value) {
+        this.loadDirectories(select.value);
+      }
+    });
+    select.addEventListener('change', () => {
+      if (select.value) {
+        this.selectedCwd = select.value;
+      }
+    });
+  }
+
+  createSession() {
+    const cwdPath = this.selectedCwd || undefined;
+    const dirName = cwdPath ? cwdPath.split('/').filter(Boolean).pop() : null;
+    const name = document.getElementById('session-name-input').value.trim() || dirName || 'New Session';
+
+    // Mark as creating so sendMessage() won't auto-create another
+    this.currentSessionId = '__creating__';
+    this.wsClient.send({ type: 'create_session', name, cwd: cwdPath });
     this.hideNewSessionModal();
     this.closeDrawer();
     this.onSessionChange(name, null);

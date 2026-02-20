@@ -657,6 +657,59 @@ html, body {
 
 .modal-content input:focus { border-color: var(--accent); }
 
+/* CWD directory picker */
+.cwd-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  min-height: 32px;
+  margin-bottom: 0;
+}
+
+.cwd-breadcrumb .crumb {
+  cursor: pointer;
+  color: var(--accent);
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.cwd-breadcrumb .crumb:hover { background: var(--bg-hover); }
+.cwd-breadcrumb .crumb.active { color: var(--text); cursor: default; font-weight: 600; }
+.cwd-breadcrumb .crumb.active:hover { background: none; }
+.cwd-breadcrumb .crumb-sep { color: var(--text-muted); }
+
+#session-cwd-select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 4px 0;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  margin-bottom: 12px;
+  font-family: var(--font-sans);
+}
+
+#session-cwd-select option {
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+#session-cwd-select option:checked {
+  background: var(--accent-dim);
+  color: #fff;
+}
+
 .modal-actions {
   display: flex;
   gap: 8px;
@@ -703,6 +756,80 @@ html, body {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Agent Task List ── */
+#task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  margin: 4px 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  animation: fadeIn 0.15s ease;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+
+.task-item.done {
+  color: var(--green);
+}
+
+.task-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.task-check {
+  font-size: 12px;
+  color: var(--green);
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.task-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Drag & Drop Overlay ── */
+#drop-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(109, 159, 255, 0.12);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: fadeIn 0.15s ease;
+}
+
+.drop-overlay-content {
+  background: var(--bg-surface);
+  border: 2px dashed var(--accent);
+  border-radius: 16px;
+  padding: 32px 48px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -0.3px;
+}
 
 /* Image in messages */
 .message img.chat-image {

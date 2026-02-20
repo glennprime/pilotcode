@@ -150,6 +150,13 @@ export class ClaudeProcess extends EventEmitter {
     }
     // Allow spawning Claude from within another Claude session
     delete env.CLAUDECODE;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+    // Remove any other internal Claude env vars that could interfere
+    for (const key of Object.keys(env)) {
+      if (key.startsWith('CLAUDE_CODE_') || key === 'CLAUDECODE') {
+        delete env[key];
+      }
+    }
     return env;
   }
 }

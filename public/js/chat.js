@@ -12,6 +12,7 @@ export class Chat {
     this.history = [];
     this.saveTimer = null;
     this.thinkingEl = null;
+    this.activeTasks = new Map(); // id -> { name, description, status }
   }
 
   setSession(sessionId) {
@@ -94,6 +95,41 @@ export class Chat {
       this.thinkingEl.remove();
       this.thinkingEl = null;
     }
+    this.clearTaskList();
+  }
+
+  renderTaskList() {
+    if (this.activeTasks.size === 0) return;
+    const hasRunning = [...this.activeTasks.values()].some(t => t.status === 'running');
+    if (!hasRunning) return;
+
+    let container = document.getElementById('task-list');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'task-list';
+      // Insert before the thinking spinner or at end of messages
+      if (this.thinkingEl) {
+        this.messagesEl.insertBefore(container, this.thinkingEl);
+      } else {
+        this.messagesEl.appendChild(container);
+      }
+    }
+
+    container.innerHTML = '';
+    for (const [id, task] of this.activeTasks) {
+      const item = document.createElement('div');
+      item.className = `task-item ${task.status}`;
+      const icon = task.status === 'running' ? '<div class="task-spinner"></div>' : '<span class="task-check">&#10003;</span>';
+      item.innerHTML = `${icon}<span class="task-label">${escapeHtml(task.name)}</span>`;
+      container.appendChild(item);
+    }
+    this.scrollToBottom();
+  }
+
+  clearTaskList() {
+    this.activeTasks.clear();
+    const el = document.getElementById('task-list');
+    if (el) el.remove();
   }
 
   handleSDKMessage(msg, onPermissionResponse) {
@@ -116,9 +152,16 @@ export class Chat {
           this.renderAssistantMessage(msg.message);
         }
         if (toolUses.length > 0) {
-          // Show what tool is being used
-          const toolName = this.friendlyToolName(toolUses[toolUses.length - 1].name);
+          for (const tu of toolUses) {
+            if (tu.name === 'Task' && tu.id) {
+              const desc = tu.input?.description || tu.input?.subagent_type || 'Agent';
+              this.activeTasks.set(tu.id, { name: desc, status: 'running' });
+            }
+          }
+          const lastTool = toolUses[toolUses.length - 1];
+          const toolName = this.friendlyToolName(lastTool.name);
           this.updateThinking(toolName);
+          this.renderTaskList();
         }
         break;
       }
@@ -127,6 +170,12 @@ export class Chat {
         // These are tool results flowing back — update spinner
         const content = msg.message?.content;
         if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === 'tool_result' && block.tool_use_id && this.activeTasks.has(block.tool_use_id)) {
+              this.activeTasks.set(block.tool_use_id, { ...this.activeTasks.get(block.tool_use_id), status: 'done' });
+              this.renderTaskList();
+            }
+          }
           const hasToolResult = content.some(b => b.type === 'tool_result');
           if (hasToolResult) {
             this.updateThinking('Processing...');
