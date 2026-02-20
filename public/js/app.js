@@ -11,6 +11,8 @@ let sessionUI;
 let imageHandler;
 let pendingMessage = null; // queued message while waiting for session init
 let creatingSession = false;
+let sessionGreeted = false; // prevent duplicate auto-greets
+let dingSuppressed = false; // suppress ding during buffer replay
 
 // Boot
 document.addEventListener('DOMContentLoaded', async () => {
@@ -77,6 +79,9 @@ function showApp() {
 
   // Sessions
   sessionUI = new SessionUI(wsClient, (name, sessionId) => {
+    // Only auto-greet brand new sessions (sessionId is null)
+    // When resuming an existing session, skip the auto-greet
+    sessionGreeted = !!sessionId;
     chat.switchSession(sessionId || null);
   });
 
@@ -133,6 +138,9 @@ function sendMessage() {
     pendingMessage = { text, images, pendingImages: [...imageHandler.pendingImages] };
     // Use first few words of the message as the session name
     const name = text.slice(0, 40) || 'New Session';
+    // Clear old session content before creating new one
+    chat.clear();
+    sessionGreeted = false;
     wsClient.send({ type: 'create_session', name });
     // Clear input immediately
     input.value = '';
@@ -163,8 +171,9 @@ function doSend(text, images) {
 }
 
 function handleMessage(msg) {
-  // Track session ID from init
-  if (msg.type === 'system' && msg.session_id) {
+  console.log("[APP-DEBUG] handleMessage type:", msg.type, "subtype:", msg.subtype);
+  // Track session ID from init — only process once per session
+  if (msg.type === 'system' && msg.session_id && msg.session_id !== chat.sessionId) {
     sessionUI.setCurrentSession(msg.session_id);
     chat.setSession(msg.session_id);
     wsClient.setActiveSession(msg.session_id);
@@ -174,6 +183,7 @@ function handleMessage(msg) {
     if (pendingMessage) {
       const { text, images, pendingImages } = pendingMessage;
       pendingMessage = null;
+      sessionGreeted = true;
       chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
       wsClient.send({
         type: 'message',
@@ -181,6 +191,13 @@ function handleMessage(msg) {
         images: images.length > 0 ? images : undefined,
       });
       document.getElementById('abort-btn').classList.add('active');
+    } else if (!sessionGreeted) {
+      // Auto-greet: session created from modal with no message queued
+      sessionGreeted = true;
+      chat.addUserMessage('hello');
+      wsClient.send({ type: 'message', content: 'hello' });
+      document.getElementById('abort-btn').classList.add('active');
+      chat.showThinking('Thinking...');
     }
   }
 
@@ -192,14 +209,19 @@ function handleMessage(msg) {
     wsClient.setActiveSession(msg.newSessionId);
   }
 
-  // Reconnect: successfully rejoined running session
+  // Reconnect: successfully rejoined running session — buffer replay incoming
   if (msg.type === 'session_rejoined') {
-    // Already re-associated server-side, nothing else needed
+    // Don't clear chat — loadHistory already rendered the conversation.
+    // Just suppress the ding during buffer replay so switching sessions isn't noisy.
+    dingSuppressed = true;
+    setTimeout(() => { dingSuppressed = false; }, 2000);
   }
 
   // Reconnect: process died while we were disconnected — auto-resume once
   if (msg.type === 'session_not_running') {
     const sid = msg.sessionId || wsClient.activeSessionId;
+    // Load saved history so user sees past conversation
+    if (sid) chat.loadHistory(sid);
     if (sid && !sessionUI._resumeAttempted?.has(sid)) {
       if (!sessionUI._resumeAttempted) sessionUI._resumeAttempted = new Set();
       sessionUI._resumeAttempted.add(sid);
@@ -237,7 +259,7 @@ function handleMessage(msg) {
   // Hide abort button on result + play notification (only on success, not errors)
   if (msg.type === 'result' || msg.type === 'process_exit') {
     document.getElementById('abort-btn').classList.remove('active');
-    if (msg.type === 'result' && !msg.is_error) {
+    if (msg.type === 'result' && !msg.is_error && !dingSuppressed) {
       playDing();
     }
   }

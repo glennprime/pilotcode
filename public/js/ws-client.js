@@ -29,6 +29,14 @@ export class WSClient {
     this.ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
+        console.log("[WS-DEBUG] raw msg:", msg.type, "_sid:", msg._sid);
+
+        // Strip internal session tag before passing to the app.
+        // Session isolation is handled server-side: the server immediately
+        // removes the client from the old session's broadcast list on switch,
+        // so only messages from the active session reach this client.
+        delete msg._sid;
+
         this.onMessage(msg);
       } catch { /* ignore non-JSON */ }
     };

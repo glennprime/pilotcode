@@ -657,6 +657,21 @@ html, body {
 
 .modal-content input:focus { border-color: var(--accent); }
 
+#session-model-select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 12px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+#session-model-select:focus { border-color: var(--accent); }
+
 /* CWD directory picker */
 .cwd-breadcrumb {
   display: flex;
