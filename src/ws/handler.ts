@@ -8,7 +8,7 @@ import { SessionManager } from '../claude/manager.js';
 import { ClaudeProcess } from '../claude/process.js';
 import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DATA_DIR } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
-import { log } from '../logger.js';
+import { log, sessionLog } from '../logger.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
 
@@ -266,6 +266,7 @@ function handleCreateSession(
   const name = msg.name || 'New Session';
   const model = msg.model || undefined;
 
+  sessionLog('CREATE', { name, cwd, model: model || 'default' });
   const proc = manager.createProcess({ cwd, model });
   if (onProcSpawned) onProcSpawned(proc);
   wireProcess(ws, proc, manager, name, cwd, setCurrent, undefined, model);
@@ -284,9 +285,10 @@ function handleResumeSession(
     return;
   }
 
-  // Check if process is already running
+  // Check if process is already running (follows alias chain)
   let proc = manager.getProcess(sessionId);
   if (proc && proc.isAlive) {
+    sessionLog('RESUME_FOUND_ALIVE', { requestedId: sessionId, processSessionId: proc.sessionId || 'unknown' });
     setCurrent(proc, sessionId);
     if (onProcSpawned) onProcSpawned(proc);
     // Send session_rejoined so client knows to expect buffer replay
@@ -294,6 +296,7 @@ function handleResumeSession(
     // Replay buffered messages — only display-relevant types
     const replayTypes = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
     const buffered = getBufferedMessages(sessionId);
+    sessionLog('BUFFER_REPLAY', { sessionId, bufferedCount: buffered.length });
     for (const raw of buffered) {
       try {
         const parsed = JSON.parse(raw);
@@ -313,6 +316,7 @@ function handleResumeSession(
   const name = meta?.name || 'Resumed Session';
   const model = meta?.model;
 
+  sessionLog('RESUME_SPAWN', { sessionId, name, cwd, model: model || 'default', metaFound: !!meta });
   proc = manager.createProcess({ cwd, resume: sessionId, model });
   if (onProcSpawned) onProcSpawned(proc);
   wireProcess(ws, proc, manager, name, cwd, setCurrent, sessionId, model);
@@ -388,9 +392,11 @@ function ensureBroadcastWired(
         // Already processed init — skip duplicate system messages
       } else {
         sessionInitDone = true;
+        sessionLog('INIT', { newId: sid, replacesId: replacesSessionId || 'none', name });
         if (setCurrent) setCurrent(proc, sid);
 
         if (replacesSessionId && replacesSessionId !== sid) {
+          sessionLog('ID_CHANGED', { oldId: replacesSessionId, newId: sid, name });
           const sessions = manager.loadSessions();
           const existing = sessions.find((s) => s.id === replacesSessionId);
           if (existing) {
@@ -459,12 +465,12 @@ function ensureBroadcastWired(
   });
 
   proc.on('close', (code: number) => {
+    sessionLog('PROCESS_EXIT', { sessionId: sessionId || 'none', code, name, replacesId: replacesSessionId || 'none' });
     log('claude', `Process closed with code ${code}, sessionId=${sessionId}`);
     if (!sessionId) {
       // Process died before getting a session ID (e.g. --resume failed).
-      // Use replacesSessionId as fallback to notify the client.
       const fallbackSid = replacesSessionId || null;
-      log('claude', `Process closed before session ID assigned. fallback=${fallbackSid}`, 'warn');
+      sessionLog('EXIT_NO_SESSION_ID', { fallbackId: fallbackSid || 'none', code });
       if (fallbackSid) {
         broadcastAll(fallbackSid, JSON.stringify({
           type: 'process_exit', code,
@@ -497,6 +503,7 @@ function ensureBroadcastWired(
       crashRetries.set(sessionId, retry);
 
       if (retry.count <= MAX_CRASH_RETRIES) {
+        sessionLog('CRASH_RETRY', { sessionId, code, attempt: retry.count, maxAttempts: MAX_CRASH_RETRIES, name });
         log('claude', `Auto-resume: session ${sessionId} crashed (code ${code}), attempt ${retry.count}/${MAX_CRASH_RETRIES}`);
         broadcastAll(sessionId, JSON.stringify({ type: 'session_reconnecting', attempt: retry.count, maxAttempts: MAX_CRASH_RETRIES }));
 
@@ -532,6 +539,7 @@ function ensureBroadcastWired(
   });
 
   proc.on('error', (err: Error) => {
+    sessionLog('PROCESS_ERROR', { sessionId: sessionId || 'none', error: err.message, name });
     if (sessionId) {
       broadcastAll(sessionId, JSON.stringify({ type: 'error', error: err.message }));
     }
@@ -582,9 +590,11 @@ const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
 
 function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | null, sessionId: string | null): void {
   if (!proc || !proc.isAlive) {
+    sessionLog('MESSAGE_DROPPED', { sessionId: sessionId || 'none', reason: proc ? 'process_dead' : 'no_process', content: (msg.content || '').slice(0, 50) });
     ws.send(JSON.stringify({ type: 'error', error: 'No active session. Create or resume one first.' }));
     return;
   }
+  sessionLog('MESSAGE_SENT', { sessionId: sessionId || 'none', processSessionId: proc.sessionId || 'none', content: (msg.content || '').slice(0, 50) });
 
   const text = msg.content || '';
   const files: string[] = msg.images || [];
