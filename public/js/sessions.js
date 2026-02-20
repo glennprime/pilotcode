@@ -135,8 +135,32 @@ export class SessionUI {
     this.modal.classList.add('active');
     document.getElementById('session-name-input').value = '';
     this.selectedCwd = null;
+    this.loadModels();
     this.loadDirectories(); // load root directories
     document.getElementById('session-name-input').focus();
+  }
+
+  async loadModels() {
+    const select = document.getElementById('session-model-select');
+    try {
+      const res = await fetch('/api/models');
+      if (!res.ok) return;
+      const models = await res.json();
+      select.innerHTML = '';
+      // "Default" option lets Claude CLI pick its own default
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = 'Default (CLI default)';
+      select.appendChild(defaultOpt);
+      for (const m of models) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.name;
+        select.appendChild(opt);
+      }
+      // Default to first real model (Opus)
+      if (models.length > 0) select.value = models[0].id;
+    } catch { /* offline — keep whatever's there */ }
   }
 
   hideNewSessionModal() {
