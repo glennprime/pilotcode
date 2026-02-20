@@ -17,6 +17,18 @@ interface WSMessage {
   [key: string]: any;
 }
 
+interface BroadcastWireOptions {
+  proc: ClaudeProcess;
+  knownSessionId: string | null;
+  manager: SessionManager;
+  name: string;
+  cwd: string;
+  model?: string;
+  replacesSessionId?: string;
+  setCurrent?: (proc: ClaudeProcess, sid: string) => void;
+  originWs?: WebSocket | null;
+}
+
 // Track all connected clients per session for broadcasting
 const sessionClients = new Map<string, Set<WebSocket>>();
 
@@ -36,6 +48,11 @@ const sessionMessageBuffers = new Map<string, string[]>();
 // This prevents adding duplicate listeners and ensures every process
 // that needs one gets wired — even after server restart.
 const wiredProcesses = new WeakSet<ClaudeProcess>();
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+
+// Message types that are relevant for buffer replay on rejoin/resume
+const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
 
 /**
  * Tag a message with its session ID so clients can filter by session.
@@ -64,6 +81,23 @@ function bufferMessage(sessionId: string, data: string): void {
 
 function getBufferedMessages(sessionId: string): string[] {
   return sessionMessageBuffers.get(sessionId) || [];
+}
+
+/**
+ * Replay buffered messages to a client that is rejoining a session.
+ * Only sends display-relevant message types (assistant, user, result, etc.).
+ */
+function replayBufferedMessages(ws: WebSocket, sessionId: string): void {
+  const buffered = getBufferedMessages(sessionId);
+  sessionLog('BUFFER_REPLAY', { sessionId, bufferedCount: buffered.length });
+  for (const raw of buffered) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (REPLAY_TYPES.has(parsed.type) && ws.readyState === WebSocket.OPEN) {
+        ws.send(raw);
+      }
+    } catch {}
+  }
 }
 
 /** Copy history file from old session ID to new session ID (server-side). */
@@ -130,6 +164,20 @@ function removeClient(ws: WebSocket): void {
   }
 }
 
+/**
+ * Detach a WebSocket from its current session and reset local tracking state.
+ * Called before create/resume/rejoin to prevent cross-contamination.
+ */
+function detachFromSession(
+  ws: WebSocket,
+  state: { currentProc: ClaudeProcess | null; currentSessionId: string | null; pendingProc: ClaudeProcess | null }
+): void {
+  removeClient(ws);
+  state.currentSessionId = null;
+  state.currentProc = null;
+  state.pendingProc = null;
+}
+
 export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): void {
   // Heartbeat: ping all clients every 30s, terminate unresponsive ones
   const HEARTBEAT_INTERVAL = 30_000;
@@ -167,12 +215,25 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
     aliveClients.add(ws);
     ws.on('pong', () => aliveClients.add(ws));
 
-    let currentProc: ClaudeProcess | null = null;
-    let currentSessionId: string | null = null;
-    // Track the process even before setCurrent fires (during init).
-    // This prevents messages from being silently dropped if the user
-    // types before Claude's system message arrives.
-    let pendingProc: ClaudeProcess | null = null;
+    // Mutable connection state — tracks what session/process this WebSocket is bound to.
+    // Using an object so detachFromSession can reset all fields in one place.
+    const connState = {
+      currentProc: null as ClaudeProcess | null,
+      currentSessionId: null as string | null,
+      // Track the process even before setCurrent fires (during init).
+      // This prevents messages from being silently dropped if the user
+      // types before Claude's system message arrives.
+      pendingProc: null as ClaudeProcess | null,
+    };
+
+    /** Callback for when a session is fully initialized (system message received). */
+    function onSessionReady(proc: ClaudeProcess, sid: string, action: string): void {
+      connState.currentProc = proc;
+      connState.pendingProc = null;
+      connState.currentSessionId = sid;
+      addClient(sid, ws);
+      log('ws', `Session ${action}: ${sid}`);
+    }
 
     ws.on('message', (raw) => {
       let msg: WSMessage;
@@ -187,60 +248,38 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
 
       switch (msg.type) {
         case 'create_session':
-          // IMMEDIATELY remove from old session to prevent cross-contamination
-          removeClient(ws);
-          currentSessionId = null;
-          currentProc = null;
-          pendingProc = null;
+          detachFromSession(ws, connState);
           handleCreateSession(ws, msg, manager, (proc, sid) => {
-            currentProc = proc;
-            pendingProc = null;
-            currentSessionId = sid;
-            addClient(sid, ws);
-            log('ws', `Session created: ${sid}`);
-          }, (proc) => { pendingProc = proc; });
+            onSessionReady(proc, sid, 'created');
+          }, (proc) => { connState.pendingProc = proc; });
           break;
 
         case 'resume_session':
-          // IMMEDIATELY remove from old session to prevent cross-contamination
-          removeClient(ws);
-          currentSessionId = null;
-          currentProc = null;
-          pendingProc = null;
+          detachFromSession(ws, connState);
           handleResumeSession(ws, msg, manager, (proc, sid) => {
-            currentProc = proc;
-            pendingProc = null;
-            currentSessionId = sid;
-            addClient(sid, ws);
-            log('ws', `Session resumed: ${sid}`);
-          }, (proc) => { pendingProc = proc; });
+            onSessionReady(proc, sid, 'resumed');
+          }, (proc) => { connState.pendingProc = proc; });
+          break;
+
+        case 'rejoin_session':
+          detachFromSession(ws, connState);
+          handleRejoinSession(ws, msg, manager, (proc, sid) => {
+            onSessionReady(proc, sid, 'rejoined');
+          });
           break;
 
         case 'message':
           // Use pendingProc as fallback if session init hasn't completed yet
-          handleUserMessage(ws, msg, currentProc || pendingProc, currentSessionId);
+          handleUserMessage(ws, msg, connState.currentProc || connState.pendingProc, connState.currentSessionId);
           break;
 
         case 'permission_response':
-          handlePermissionResponse(msg, currentProc);
-          break;
-
-        case 'rejoin_session':
-          // IMMEDIATELY remove from old session to prevent cross-contamination
-          removeClient(ws);
-          currentSessionId = null;
-          currentProc = null;
-          handleRejoinSession(ws, msg, manager, (proc, sid) => {
-            currentProc = proc;
-            currentSessionId = sid;
-            addClient(sid, ws);
-            log('ws', `Session rejoined: ${sid}`);
-          });
+          handlePermissionResponse(msg, connState.currentProc);
           break;
 
         case 'interrupt':
-          currentProc?.interrupt();
-          log('ws', `Interrupt sent for session ${currentSessionId}`);
+          connState.currentProc?.interrupt();
+          log('ws', `Interrupt sent for session ${connState.currentSessionId}`);
           break;
 
         default:
@@ -269,7 +308,10 @@ function handleCreateSession(
   sessionLog('CREATE', { name, cwd, model: model || 'default' });
   const proc = manager.createProcess({ cwd, model });
   if (onProcSpawned) onProcSpawned(proc);
-  wireProcess(ws, proc, manager, name, cwd, setCurrent, undefined, model);
+  ensureBroadcastWired({
+    proc, knownSessionId: null, manager, name, cwd,
+    model, setCurrent, originWs: ws,
+  });
 }
 
 function handleResumeSession(
@@ -291,20 +333,8 @@ function handleResumeSession(
     sessionLog('RESUME_FOUND_ALIVE', { requestedId: sessionId, processSessionId: proc.sessionId || 'unknown' });
     setCurrent(proc, sessionId);
     if (onProcSpawned) onProcSpawned(proc);
-    // Send session_rejoined so client knows to expect buffer replay
     ws.send(JSON.stringify({ type: 'session_rejoined', sessionId }));
-    // Replay buffered messages — only display-relevant types
-    const replayTypes = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
-    const buffered = getBufferedMessages(sessionId);
-    sessionLog('BUFFER_REPLAY', { sessionId, bufferedCount: buffered.length });
-    for (const raw of buffered) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (replayTypes.has(parsed.type)) {
-          if (ws.readyState === WebSocket.OPEN) ws.send(raw);
-        }
-      } catch {}
-    }
+    replayBufferedMessages(ws, sessionId);
     wireExistingProcess(ws, proc, sessionId, manager);
     return;
   }
@@ -319,7 +349,10 @@ function handleResumeSession(
   sessionLog('RESUME_SPAWN', { sessionId, name, cwd, model: model || 'default', metaFound: !!meta });
   proc = manager.createProcess({ cwd, resume: sessionId, model });
   if (onProcSpawned) onProcSpawned(proc);
-  wireProcess(ws, proc, manager, name, cwd, setCurrent, sessionId, model);
+  ensureBroadcastWired({
+    proc, knownSessionId: null, manager, name, cwd,
+    model, replacesSessionId: sessionId, setCurrent, originWs: ws,
+  });
 }
 
 function handleRejoinSession(
@@ -339,17 +372,7 @@ function handleRejoinSession(
   if (proc && proc.isAlive) {
     setCurrent(proc, sessionId);
     ws.send(JSON.stringify({ type: 'session_rejoined', sessionId }));
-    // Replay buffered messages — only display-relevant types
-    const replayTypes = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
-    const buffered = getBufferedMessages(sessionId);
-    for (const raw of buffered) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (replayTypes.has(parsed.type)) {
-          if (ws.readyState === WebSocket.OPEN) ws.send(raw);
-        }
-      } catch {}
-    }
+    replayBufferedMessages(ws, sessionId);
     wireExistingProcess(ws, proc, sessionId, manager);
   } else {
     // Process is gone — tell the client so it can resume properly
@@ -364,17 +387,9 @@ function handleRejoinSession(
  * in the session's client set, so it works regardless of which specific
  * WebSocket triggered the wiring.
  */
-function ensureBroadcastWired(
-  proc: ClaudeProcess,
-  knownSessionId: string | null,
-  manager: SessionManager,
-  name: string,
-  cwd: string,
-  model?: string,
-  replacesSessionId?: string,
-  setCurrent?: (proc: ClaudeProcess, sid: string) => void,
-  originWs?: WebSocket | null
-): void {
+function ensureBroadcastWired(opts: BroadcastWireOptions): void {
+  const { proc, knownSessionId, manager, name, cwd, model, replacesSessionId, setCurrent, originWs } = opts;
+
   if (wiredProcesses.has(proc)) return;
   wiredProcesses.add(proc);
 
@@ -388,52 +403,15 @@ function ensureBroadcastWired(
       const sid = msg.session_id;
       sessionId = sid;
 
-      if (sessionInitDone) {
-        // Already processed init — skip duplicate system messages
-      } else {
+      if (!sessionInitDone) {
         sessionInitDone = true;
         sessionLog('INIT', { newId: sid, replacesId: replacesSessionId || 'none', name });
         if (setCurrent) setCurrent(proc, sid);
 
         if (replacesSessionId && replacesSessionId !== sid) {
-          sessionLog('ID_CHANGED', { oldId: replacesSessionId, newId: sid, name });
-          const sessions = manager.loadSessions();
-          const existing = sessions.find((s) => s.id === replacesSessionId);
-          if (existing) {
-            existing.id = sid;
-            existing.lastUsed = new Date().toISOString();
-            const cleaned = sessions.filter((s) => s === existing || s.id !== sid);
-            manager.saveSessions(cleaned);
-          } else {
-            manager.saveSession({ id: sid, name, cwd, model, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
-          }
-          manager.registerProcess(sid, proc);
-          manager.registerAlias(replacesSessionId, sid);
-
-          // Migrate history and message buffer from old ID to new
-          migrateHistory(replacesSessionId, sid);
-
-          // Migrate clients from old session ID to new
-          const oldClients = sessionClients.get(replacesSessionId);
-          if (oldClients) {
-            for (const c of oldClients) addClient(sid, c);
-            sessionClients.delete(replacesSessionId);
-          }
+          handleSessionIdChange(manager, proc, replacesSessionId, sid, name, cwd, model);
         } else {
-          // Remove any stale entries with the same name+cwd that have no running process
-          const sessions = manager.loadSessions();
-          const activeIds = manager.listActive();
-          const cleaned = sessions.filter((s) =>
-            s.id === sid || !(s.name === name && s.cwd === cwd && !activeIds.includes(s.id))
-          );
-          cleaned.push({ id: sid, name, cwd, model, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
-          const seen = new Set<string>();
-          const deduped = cleaned.filter((s) => {
-            if (seen.has(s.id)) return false;
-            seen.add(s.id);
-            return true;
-          });
-          manager.saveSessions(deduped);
+          handleNewSession(manager, sid, name, cwd, model);
         }
 
         // Notify clients of the session ID
@@ -446,9 +424,7 @@ function ensureBroadcastWired(
       pendingPermissionInputs.set((msg as any).request_id, (msg as any).request.input);
     }
 
-    // Broadcast all Claude messages to every client on this session.
-    // broadcastAll sends to ALL clients in sessionClients.get(sessionId),
-    // so any client that has been added via addClient() will receive messages.
+    // Broadcast all Claude messages to every client on this session
     if (sessionId) {
       broadcastAll(sessionId, JSON.stringify(msg));
     } else if (originWs && originWs.readyState === WebSocket.OPEN) {
@@ -458,84 +434,13 @@ function ensureBroadcastWired(
   });
 
   proc.on('stderr', (text: string) => {
-    // stderr is low-priority debug info — only send to origin client if available
     if (originWs && originWs.readyState === WebSocket.OPEN) {
       originWs.send(JSON.stringify({ type: 'log', log: { level: 'debug', message: text } }));
     }
   });
 
   proc.on('close', (code: number) => {
-    sessionLog('PROCESS_EXIT', { sessionId: sessionId || 'none', code, name, replacesId: replacesSessionId || 'none' });
-    log('claude', `Process closed with code ${code}, sessionId=${sessionId}`);
-    if (!sessionId) {
-      // Process died before getting a session ID (e.g. --resume failed).
-      const fallbackSid = replacesSessionId || null;
-      sessionLog('EXIT_NO_SESSION_ID', { fallbackId: fallbackSid || 'none', code });
-      if (fallbackSid) {
-        broadcastAll(fallbackSid, JSON.stringify({
-          type: 'process_exit', code,
-          error: 'Session process failed to start. Try creating a new session.',
-        }));
-      } else if (originWs && originWs.readyState === WebSocket.OPEN) {
-        originWs.send(JSON.stringify({
-          type: 'process_exit', code,
-          error: 'Session process failed to start.',
-        }));
-      }
-      return;
-    }
-
-    // Don't auto-resume intentional kills
-    if (manager.wasIntentionalKill(sessionId)) {
-      manager.clearIntentionalKill(sessionId);
-      broadcastAll(sessionId, JSON.stringify({ type: 'process_exit', code }));
-      return;
-    }
-
-    // Process crashed — attempt auto-resume
-    if (code !== 0) {
-      const now = Date.now();
-      let retry = crashRetries.get(sessionId);
-      if (!retry || now - retry.firstAttempt > CRASH_RETRY_WINDOW) {
-        retry = { count: 0, firstAttempt: now };
-      }
-      retry.count++;
-      crashRetries.set(sessionId, retry);
-
-      if (retry.count <= MAX_CRASH_RETRIES) {
-        sessionLog('CRASH_RETRY', { sessionId, code, attempt: retry.count, maxAttempts: MAX_CRASH_RETRIES, name });
-        log('claude', `Auto-resume: session ${sessionId} crashed (code ${code}), attempt ${retry.count}/${MAX_CRASH_RETRIES}`);
-        broadcastAll(sessionId, JSON.stringify({ type: 'session_reconnecting', attempt: retry.count, maxAttempts: MAX_CRASH_RETRIES }));
-
-        const delay = retry.count * 2000;
-        setTimeout(() => {
-          const sessions = manager.loadSessions();
-          const meta = sessions.find((s) => s.id === sessionId);
-          const resumeCwd = meta?.cwd || cwd;
-          const resumeModel = meta?.model || model;
-
-          const newProc = manager.createProcess({ cwd: resumeCwd, resume: sessionId!, model: resumeModel });
-
-          // ALWAYS wire the new process — even with no clients connected.
-          // broadcastAll will find clients when they reconnect via addClient().
-          ensureBroadcastWired(
-            newProc, sessionId, manager, name, resumeCwd,
-            resumeModel, sessionId!, (p, sid) => {
-              manager.registerProcess(sid, p);
-            },
-            null // no specific WebSocket — broadcastAll handles delivery
-          );
-        }, delay);
-        return;
-      }
-
-      log('claude', `Auto-resume: session ${sessionId} max retries exhausted`, 'error');
-      crashRetries.delete(sessionId);
-      broadcastAll(sessionId, JSON.stringify({ type: 'session_crashed', error: 'Session crashed after multiple retries. Please resume manually.' }));
-      return;
-    }
-
-    broadcastAll(sessionId, JSON.stringify({ type: 'process_exit', code }));
+    handleProcessClose(proc, code, sessionId, replacesSessionId || undefined, name, cwd, model, manager, originWs);
   });
 
   proc.on('error', (err: Error) => {
@@ -546,20 +451,145 @@ function ensureBroadcastWired(
   });
 }
 
-/**
- * Wire a NEW process (just spawned). Sets up broadcast listeners + session init.
- */
-function wireProcess(
-  ws: WebSocket,
-  proc: ClaudeProcess,
+/** Handle the case where Claude returns a different session ID on resume. */
+function handleSessionIdChange(
   manager: SessionManager,
+  proc: ClaudeProcess,
+  oldId: string,
+  newId: string,
   name: string,
   cwd: string,
-  setCurrent: (proc: ClaudeProcess, sid: string) => void,
-  replacesSessionId?: string,
   model?: string
 ): void {
-  ensureBroadcastWired(proc, null, manager, name, cwd, model, replacesSessionId, setCurrent, ws);
+  sessionLog('ID_CHANGED', { oldId, newId, name });
+  const sessions = manager.loadSessions();
+  const existing = sessions.find((s) => s.id === oldId);
+  if (existing) {
+    existing.id = newId;
+    existing.lastUsed = new Date().toISOString();
+    const cleaned = sessions.filter((s) => s === existing || s.id !== newId);
+    manager.saveSessions(cleaned);
+  } else {
+    manager.saveSession({ id: newId, name, cwd, model, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
+  }
+  manager.registerProcess(newId, proc);
+  manager.registerAlias(oldId, newId);
+
+  migrateHistory(oldId, newId);
+
+  // Migrate clients from old session ID to new
+  const oldClients = sessionClients.get(oldId);
+  if (oldClients) {
+    for (const c of oldClients) addClient(newId, c);
+    sessionClients.delete(oldId);
+  }
+}
+
+/** Save a brand-new session, removing stale entries with the same name+cwd. */
+function handleNewSession(
+  manager: SessionManager,
+  sid: string,
+  name: string,
+  cwd: string,
+  model?: string
+): void {
+  const sessions = manager.loadSessions();
+  const activeIds = manager.listActive();
+  const cleaned = sessions.filter((s) =>
+    s.id === sid || !(s.name === name && s.cwd === cwd && !activeIds.includes(s.id))
+  );
+  cleaned.push({ id: sid, name, cwd, model, createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() });
+  const seen = new Set<string>();
+  const deduped = cleaned.filter((s) => {
+    if (seen.has(s.id)) return false;
+    seen.add(s.id);
+    return true;
+  });
+  manager.saveSessions(deduped);
+}
+
+/** Handle process exit: intentional kills, crash recovery, and normal exit. */
+function handleProcessClose(
+  proc: ClaudeProcess,
+  code: number,
+  sessionId: string | null,
+  replacesSessionId: string | undefined,
+  name: string,
+  cwd: string,
+  model: string | undefined,
+  manager: SessionManager,
+  originWs?: WebSocket | null
+): void {
+  sessionLog('PROCESS_EXIT', { sessionId: sessionId || 'none', code, name, replacesId: replacesSessionId || 'none' });
+  log('claude', `Process closed with code ${code}, sessionId=${sessionId}`);
+
+  if (!sessionId) {
+    const fallbackSid = replacesSessionId || null;
+    sessionLog('EXIT_NO_SESSION_ID', { fallbackId: fallbackSid || 'none', code });
+    if (fallbackSid) {
+      broadcastAll(fallbackSid, JSON.stringify({
+        type: 'process_exit', code,
+        error: 'Session process failed to start. Try creating a new session.',
+      }));
+    } else if (originWs && originWs.readyState === WebSocket.OPEN) {
+      originWs.send(JSON.stringify({
+        type: 'process_exit', code,
+        error: 'Session process failed to start.',
+      }));
+    }
+    return;
+  }
+
+  // Don't auto-resume intentional kills
+  if (manager.wasIntentionalKill(sessionId)) {
+    manager.clearIntentionalKill(sessionId);
+    broadcastAll(sessionId, JSON.stringify({ type: 'process_exit', code }));
+    return;
+  }
+
+  // Process crashed — attempt auto-resume
+  if (code !== 0) {
+    const now = Date.now();
+    let retry = crashRetries.get(sessionId);
+    if (!retry || now - retry.firstAttempt > CRASH_RETRY_WINDOW) {
+      retry = { count: 0, firstAttempt: now };
+    }
+    retry.count++;
+    crashRetries.set(sessionId, retry);
+
+    if (retry.count <= MAX_CRASH_RETRIES) {
+      sessionLog('CRASH_RETRY', { sessionId, code, attempt: retry.count, maxAttempts: MAX_CRASH_RETRIES, name });
+      log('claude', `Auto-resume: session ${sessionId} crashed (code ${code}), attempt ${retry.count}/${MAX_CRASH_RETRIES}`);
+      broadcastAll(sessionId, JSON.stringify({ type: 'session_reconnecting', attempt: retry.count, maxAttempts: MAX_CRASH_RETRIES }));
+
+      const delay = retry.count * 2000;
+      setTimeout(() => {
+        const sessions = manager.loadSessions();
+        const meta = sessions.find((s) => s.id === sessionId);
+        const resumeCwd = meta?.cwd || cwd;
+        const resumeModel = meta?.model || model;
+
+        const newProc = manager.createProcess({ cwd: resumeCwd, resume: sessionId!, model: resumeModel });
+
+        // ALWAYS wire the new process — even with no clients connected.
+        // broadcastAll will find clients when they reconnect via addClient().
+        ensureBroadcastWired({
+          proc: newProc, knownSessionId: sessionId, manager, name, cwd: resumeCwd,
+          model: resumeModel, replacesSessionId: sessionId!,
+          setCurrent: (p, sid) => { manager.registerProcess(sid, p); },
+          originWs: null,
+        });
+      }, delay);
+      return;
+    }
+
+    log('claude', `Auto-resume: session ${sessionId} max retries exhausted`, 'error');
+    crashRetries.delete(sessionId);
+    broadcastAll(sessionId, JSON.stringify({ type: 'session_crashed', error: 'Session crashed after multiple retries. Please resume manually.' }));
+    return;
+  }
+
+  broadcastAll(sessionId, JSON.stringify({ type: 'process_exit', code }));
 }
 
 /**
@@ -579,14 +609,12 @@ function wireExistingProcess(ws: WebSocket, proc: ClaudeProcess, sessionId: stri
   log('ws', `Wiring existing process for session ${sessionId} — was missing broadcast listener`);
   const sessions = manager.loadSessions();
   const meta = sessions.find((s) => s.id === sessionId);
-  ensureBroadcastWired(
-    proc, sessionId, manager,
-    meta?.name || 'Session', meta?.cwd || process.cwd(),
-    meta?.model, undefined, undefined, ws
-  );
+  ensureBroadcastWired({
+    proc, knownSessionId: sessionId, manager,
+    name: meta?.name || 'Session', cwd: meta?.cwd || process.cwd(),
+    model: meta?.model, originWs: ws,
+  });
 }
-
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
 
 function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | null, sessionId: string | null): void {
   if (!proc || !proc.isAlive) {
@@ -608,46 +636,47 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
     }), ws);
   }
 
-  if (files.length > 0) {
-    const blocks: ContentBlock[] = [];
-    const docPaths: string[] = [];
-
-    for (const filename of files) {
-      const ext = filename.split('.').pop()?.toLowerCase() || '';
-      const filePath = join(IMAGES_DIR, filename);
-
-      if (IMAGE_EXTENSIONS.has(ext)) {
-        try {
-          const data = readFileSync(filePath).toString('base64');
-          const mediaType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
-          blocks.push({
-            type: 'image',
-            source: { type: 'base64', media_type: mediaType, data },
-          } as ImageBlock);
-        } catch {
-          ws.send(JSON.stringify({ type: 'error', error: `Failed to read image: ${filename}` }));
-        }
-      } else {
-        docPaths.push(filePath);
-      }
-    }
-
-    let fullText = text;
-    if (docPaths.length > 0) {
-      const fileList = docPaths.map((p) => `File: ${p}`).join('\n');
-      fullText = fullText
-        ? `${fullText}\n\nI've attached the following file(s) — please read and analyze them:\n${fileList}`
-        : `I've attached the following file(s) — please read and analyze them:\n${fileList}`;
-    }
-
-    if (fullText) {
-      blocks.push({ type: 'text', text: fullText });
-    }
-
-    proc.sendMessage(blocks.length > 0 ? blocks : fullText);
-  } else {
+  if (files.length === 0) {
     proc.sendMessage(text);
+    return;
   }
+
+  const blocks: ContentBlock[] = [];
+  const docPaths: string[] = [];
+
+  for (const filename of files) {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const filePath = join(IMAGES_DIR, filename);
+
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      try {
+        const data = readFileSync(filePath).toString('base64');
+        const mediaType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+        blocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: mediaType, data },
+        } as ImageBlock);
+      } catch {
+        ws.send(JSON.stringify({ type: 'error', error: `Failed to read image: ${filename}` }));
+      }
+    } else {
+      docPaths.push(filePath);
+    }
+  }
+
+  let fullText = text;
+  if (docPaths.length > 0) {
+    const fileList = docPaths.map((p) => `File: ${p}`).join('\n');
+    fullText = fullText
+      ? `${fullText}\n\nI've attached the following file(s) — please read and analyze them:\n${fileList}`
+      : `I've attached the following file(s) — please read and analyze them:\n${fileList}`;
+  }
+
+  if (fullText) {
+    blocks.push({ type: 'text', text: fullText });
+  }
+
+  proc.sendMessage(blocks.length > 0 ? blocks : fullText);
 }
 
 function handlePermissionResponse(msg: WSMessage, proc: ClaudeProcess | null): void {
