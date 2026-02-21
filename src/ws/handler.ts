@@ -38,8 +38,17 @@ const sessionClients = new Map<string, Set<WebSocket>>();
 // Cache pending permission request inputs so we can send them back as updatedInput
 const pendingPermissionInputs = new Map<string, unknown>();
 
-// Track pending ExitPlanMode tool_use IDs so we can suppress the error tool_result
-const pendingPlanApprovals = new Map<string, string>(); // sessionId -> toolUseId
+// Track pending interactive tool prompts (ExitPlanMode, AskUserQuestion) per session.
+// These tools fail in stream-json mode — the CLI returns error tool_results internally.
+// We intercept the tool_use, show UI to the user, and suppress all retry noise.
+interface PendingInteractive {
+  type: 'plan' | 'question';
+  cardShown: boolean; // only show the UI card once, suppress retries
+}
+const pendingInteractive = new Map<string, PendingInteractive>();
+
+// Known error strings the CLI returns for interactive tools in stream-json mode
+const INTERACTIVE_ERRORS = new Set(['Exit plan mode?', 'Answer questions?']);
 
 // Track crash retry state per session
 const crashRetries = new Map<string, { count: number; firstAttempt: number }>();
@@ -101,7 +110,7 @@ const wiredProcesses = new WeakSet<ClaudeProcess>();
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
 
 // Message types that are relevant for buffer replay on rejoin/resume
-const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request', 'plan_approval']);
+const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request', 'plan_approval', 'user_question']);
 
 /**
  * Tag a message with its session ID so clients can filter by session.
@@ -330,6 +339,10 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
 
         case 'plan_response':
           handlePlanResponse(msg, connState.currentProc, connState.currentSessionId);
+          break;
+
+        case 'question_response':
+          handleQuestionResponse(msg, connState.currentProc, connState.currentSessionId);
           break;
 
         case 'interrupt':
@@ -613,42 +626,67 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       }
     }
 
-    // Intercept ExitPlanMode tool_use in assistant messages
+    // Intercept ExitPlanMode / AskUserQuestion tool_use in assistant messages.
+    // The CLI can't show interactive prompts in stream-json mode so it returns
+    // error tool_results that make Claude retry in a loop. We intercept the
+    // FIRST occurrence, show a UI card, and silently suppress all retries.
     if (sessionId && msg.type === 'assistant' && (msg as any).message?.content) {
       const content = (msg as any).message.content;
       if (Array.isArray(content)) {
         const exitPlanBlock = content.find(
           (b: any) => b.type === 'tool_use' && b.name === 'ExitPlanMode'
         );
+        const askQuestionBlock = content.find(
+          (b: any) => b.type === 'tool_use' && b.name === 'AskUserQuestion'
+        );
+
         if (exitPlanBlock) {
-          pendingPlanApprovals.set(sessionId, exitPlanBlock.id);
-          log('ws', `ExitPlanMode detected in session ${sessionId}, toolUseId=${exitPlanBlock.id}`);
-          // Send plan_approval to all clients
-          broadcastAll(sessionId, JSON.stringify({
-            type: 'plan_approval',
-            plan: exitPlanBlock.input?.plan || '',
-            allowedPrompts: exitPlanBlock.input?.allowedPrompts || [],
-            toolUseId: exitPlanBlock.id,
-          }));
-          // Still broadcast the original assistant message (may contain text)
+          const pending = pendingInteractive.get(sessionId);
+          if (!pending || !pending.cardShown) {
+            // First time — show the plan approval card
+            pendingInteractive.set(sessionId, { type: 'plan', cardShown: true });
+            log('ws', `ExitPlanMode detected (first) in session ${sessionId}`);
+            broadcastAll(sessionId, JSON.stringify({
+              type: 'plan_approval',
+              plan: exitPlanBlock.input?.plan || '',
+              allowedPrompts: exitPlanBlock.input?.allowedPrompts || [],
+              toolUseId: exitPlanBlock.id,
+            }));
+          } else {
+            // Retry — suppress the entire assistant message so no duplicate card
+            log('ws', `ExitPlanMode retry suppressed in session ${sessionId}`);
+          }
+          return; // Don't broadcast the assistant message with ExitPlanMode
+        }
+
+        if (askQuestionBlock) {
+          const pending = pendingInteractive.get(sessionId);
+          if (!pending || pending.type !== 'question' || !pending.cardShown) {
+            pendingInteractive.set(sessionId, { type: 'question', cardShown: true });
+            log('ws', `AskUserQuestion detected (first) in session ${sessionId}`);
+            broadcastAll(sessionId, JSON.stringify({
+              type: 'user_question',
+              questions: askQuestionBlock.input?.questions || [],
+              toolUseId: askQuestionBlock.id,
+            }));
+          } else {
+            log('ws', `AskUserQuestion retry suppressed in session ${sessionId}`);
+          }
+          return; // Don't broadcast
         }
       }
     }
 
-    // Suppress the error tool_result for ExitPlanMode ("Exit plan mode?")
+    // Suppress error tool_results for interactive tools ("Exit plan mode?", "Answer questions?")
     if (sessionId && msg.type === 'user' && (msg as any).message?.content) {
       const content = (msg as any).message.content;
       if (Array.isArray(content)) {
-        const pendingToolUseId = pendingPlanApprovals.get(sessionId);
-        if (pendingToolUseId) {
-          const hasMatch = content.some(
-            (b: any) => b.type === 'tool_result' && b.tool_use_id === pendingToolUseId
-          );
-          if (hasMatch) {
-            log('ws', `Suppressing ExitPlanMode error tool_result for session ${sessionId}`);
-            pendingPlanApprovals.delete(sessionId);
-            return; // Don't broadcast the error tool_result
-          }
+        const hasInteractiveError = content.some(
+          (b: any) => b.type === 'tool_result' && b.is_error && INTERACTIVE_ERRORS.has(b.content)
+        );
+        if (hasInteractiveError) {
+          log('ws', `Suppressing interactive tool error tool_result for session ${sessionId}`);
+          return; // Don't broadcast
         }
       }
     }
@@ -927,6 +965,7 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
 
 function handlePlanResponse(msg: WSMessage, proc: ClaudeProcess | null, sessionId: string | null): void {
   if (!proc || !proc.isAlive) return;
+  if (sessionId) pendingInteractive.delete(sessionId);
   if (msg.approved) {
     log('ws', `Plan approved for session ${sessionId}`);
     proc.sendMessage('The user has approved the plan. Exit plan mode and proceed with implementation.');
@@ -934,6 +973,22 @@ function handlePlanResponse(msg: WSMessage, proc: ClaudeProcess | null, sessionI
     log('ws', `Plan rejected for session ${sessionId}`);
     proc.sendMessage('The user has rejected the plan. Please revise your approach.');
   }
+  if (sessionId) {
+    setSessionBusy(sessionId, 'busy');
+  }
+}
+
+function handleQuestionResponse(msg: WSMessage, proc: ClaudeProcess | null, sessionId: string | null): void {
+  if (!proc || !proc.isAlive) return;
+  if (sessionId) pendingInteractive.delete(sessionId);
+  // msg.answers is an object like { "question text": "selected answer" }
+  const answers = msg.answers || {};
+  const parts = Object.entries(answers).map(([q, a]) => `Q: ${q}\nA: ${a}`);
+  const response = parts.length > 0
+    ? `The user answered:\n${parts.join('\n\n')}`
+    : 'The user did not select any answers.';
+  log('ws', `Question answered for session ${sessionId}: ${JSON.stringify(answers)}`);
+  proc.sendMessage(response);
   if (sessionId) {
     setSessionBusy(sessionId, 'busy');
   }

@@ -504,6 +504,89 @@ html, body {
   border: 1px solid var(--border) !important;
 }
 
+/* ── Question Cards (AskUserQuestion) ── */
+.question-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--purple, #a78bfa);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin: 4px 0;
+  animation: fadeIn 0.2s ease;
+}
+
+.question-group {
+  margin-bottom: 12px;
+}
+
+.question-header {
+  font-weight: 700;
+  color: var(--purple, #a78bfa);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.question-text {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.question-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.question-option:active,
+.question-option.selected {
+  border-color: var(--green);
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.question-option .option-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.question-option .option-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.question-actions {
+  margin-top: 10px;
+}
+
+.btn-submit-answers {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--green);
+  color: #000;
+}
+
+.btn-submit-answers:disabled {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
 .permission-actions button:active { opacity: 0.8; }
 
 /* ── Question Cards (AskUserQuestion) ── */

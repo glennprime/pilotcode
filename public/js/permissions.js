@@ -77,6 +77,69 @@ export function renderPlanCard(msg, onRespond) {
   return card;
 }
 
+export function renderQuestionCard(msg, onRespond) {
+  const card = document.createElement('div');
+  card.className = 'question-card';
+
+  const questions = msg.questions || [];
+  const selections = {}; // { questionText: selectedAnswer }
+
+  let html = '';
+  for (const q of questions) {
+    const header = q.header ? `<div class="question-header">${escapeHtml(q.header)}</div>` : '';
+    html += `<div class="question-group">
+      ${header}
+      <div class="question-text">${escapeHtml(q.question)}</div>
+      <div class="question-options" data-question="${escapeHtml(q.question)}" data-multi="${q.multiSelect ? 'true' : 'false'}">`;
+    for (const opt of (q.options || [])) {
+      html += `<button class="question-option" data-label="${escapeHtml(opt.label)}">
+        <div class="option-label">${escapeHtml(opt.label)}</div>
+        ${opt.description ? `<div class="option-desc">${escapeHtml(opt.description)}</div>` : ''}
+      </button>`;
+    }
+    html += `</div></div>`;
+  }
+
+  html += `<div class="question-actions">
+    <button class="btn-submit-answers" disabled>Submit</button>
+  </div>`;
+
+  card.innerHTML = html;
+
+  // Wire up option selection
+  for (const group of card.querySelectorAll('.question-options')) {
+    const qText = group.dataset.question;
+    const isMulti = group.dataset.multi === 'true';
+    for (const btn of group.querySelectorAll('.question-option')) {
+      btn.onclick = () => {
+        if (isMulti) {
+          btn.classList.toggle('selected');
+          const selected = [...group.querySelectorAll('.question-option.selected')].map(b => b.dataset.label);
+          selections[qText] = selected.join(', ');
+        } else {
+          group.querySelectorAll('.question-option').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          selections[qText] = btn.dataset.label;
+        }
+        card.querySelector('.btn-submit-answers').disabled =
+          !Object.values(selections).some(v => v);
+      };
+    }
+  }
+
+  card.querySelector('.btn-submit-answers').onclick = () => {
+    onRespond(selections);
+    const actions = card.querySelector('.question-actions');
+    actions.innerHTML = '<span style="color: var(--green); font-size: 12px; font-weight: 600;">Answered</span>';
+    card.querySelectorAll('.question-option').forEach(b => {
+      b.disabled = true;
+      b.style.pointerEvents = 'none';
+    });
+  };
+
+  return card;
+}
+
 export function cancelPermissionCard(requestId) {
   const card = document.getElementById(`perm-${requestId}`);
   if (card) {
