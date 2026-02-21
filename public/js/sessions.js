@@ -63,11 +63,20 @@ export class SessionUI {
           <div class="session-item-name">
             ${s.busy ? '<span class="active-dot busy"></span>' : s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
           </div>
+          <button class="session-delete-btn" title="Delete">&times;</button>
         </div>
         <div class="session-item-meta">${escapeHtml(s.cwd)} &middot; ${s.model ? shortModel(s.model) : 'Sonnet'} &middot; ${timeAgo(s.lastUsed)}</div>
       `;
 
-      // Tap anywhere to switch session
+      // Delete button
+      el.querySelector('.session-delete-btn').onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete "${s.name}"?`)) {
+          this.deleteSession(s.id);
+        }
+      };
+
+      // Tap anywhere else to switch session
       el.onclick = () => {
         this.resumeSession(s.id, s.name);
         this.closeDrawer();
