@@ -1,11 +1,14 @@
-/* Easter Egg: Northrop Grumman vs UFO */
+/* ═══════════════════════════════════════════════════
+   Easter Egg: Northrop Grumman vs UFO
+   Mobile-first responsive animation
+   ═══════════════════════════════════════════════════ */
 
 /* Hidden trigger — diamond icon on no-session screen */
 #ee-trigger {
   cursor: default;
   -webkit-tap-highlight-color: transparent;
-  padding: 10px;
-  margin: -10px;
+  padding: 12px;
+  margin: -12px;
 }
 
 #ee-overlay {
@@ -16,28 +19,35 @@
   overflow: hidden;
 }
 
-/* === Flight path wrappers === */
+/* ── Sprite scaling ── */
+:root {
+  --ee-scale: clamp(0.5, 0.12vw + 0.45, 1);
+}
+
+/* ── Flight path wrappers ── */
 .ee-mover {
   position: absolute;
   will-change: transform;
 }
 
-/* === Saucer === */
+/* ═══ Saucer ═══ */
 .ee-saucer {
   position: relative;
-  width: 60px;
-  height: 34px;
+  width: calc(60px * var(--ee-scale));
+  height: calc(34px * var(--ee-scale));
   animation: ee-wobble 0.4s ease-in-out infinite;
 }
 
 .ee-saucer-body {
   position: absolute;
   bottom: 0;
-  width: 60px;
-  height: 22px;
+  width: 100%;
+  height: 65%;
   background: radial-gradient(ellipse at center, #c0c8d0 0%, #7a8a9a 50%, #4a5a6a 100%);
   border-radius: 50%;
-  box-shadow: 0 0 18px 6px rgba(0, 255, 200, 0.5), 0 0 40px 12px rgba(0, 255, 200, 0.2);
+  box-shadow:
+    0 0 calc(18px * var(--ee-scale)) calc(6px * var(--ee-scale)) rgba(0, 255, 200, 0.5),
+    0 0 calc(40px * var(--ee-scale)) calc(12px * var(--ee-scale)) rgba(0, 255, 200, 0.2);
   animation: ee-glow-pulse 0.6s ease-in-out infinite alternate;
 }
 
@@ -46,8 +56,8 @@
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 22px;
-  height: 16px;
+  width: 37%;
+  height: 47%;
   background: radial-gradient(ellipse at center bottom, rgba(180, 255, 240, 0.9), rgba(80, 220, 200, 0.4));
   border-radius: 50% 50% 40% 40%;
 }
@@ -62,59 +72,70 @@
   50%      { transform: rotate(3deg) translateY(-4px); }
 }
 
-/* === Jet (SVG-based) === */
+/* ═══ Jet (SVG-based) ═══ */
 .ee-jet {
   position: relative;
-  width: 120px;
-  height: 60px;
+  width: calc(100px * var(--ee-scale));
+  height: calc(50px * var(--ee-scale));
 }
 
 .ee-jet svg {
   display: block;
+  width: 100%;
+  height: auto;
   filter: drop-shadow(1px 2px 4px rgba(0,0,0,0.5));
 }
 
 .ee-jet-label {
   position: absolute;
-  bottom: -2px;
+  bottom: calc(-4px * var(--ee-scale));
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
   font-family: 'Arial Narrow', Arial, sans-serif;
-  font-size: 9px;
+  font-size: clamp(6px, 1.2vw + 4px, 10px);
   font-weight: bold;
   color: #fff;
   text-shadow: 0 0 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.8);
-  letter-spacing: 1.5px;
+  letter-spacing: clamp(0.5px, 0.2vw, 1.5px);
   text-transform: uppercase;
 }
 
-/* === Projectiles === */
+/* ═══ Projectiles ═══ */
 .ee-projectile {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: clamp(4px, 1vw, 8px);
+  height: clamp(4px, 1vw, 8px);
   background: radial-gradient(circle, #ffaa33 0%, #ff6600 80%);
   border-radius: 50%;
   box-shadow: 0 0 6px 2px rgba(255, 140, 0, 0.7);
+  animation: ee-projectile-fly 0.35s linear forwards;
 }
 
 @keyframes ee-projectile-fly {
   0%   { opacity: 1; transform: translateX(0); }
-  80%  { opacity: 1; transform: translateX(250px); }
-  100% { opacity: 0; transform: translateX(300px); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(clamp(80px, 25vw, 300px)); }
 }
 
-/* === Laser === */
+/* ═══ Laser ═══ */
 .ee-laser {
   position: absolute;
-  height: 4px;
+  height: clamp(3px, 0.6vw, 5px);
   background: linear-gradient(90deg, rgba(0, 255, 100, 0.95), rgba(0, 255, 200, 0.7));
   box-shadow: 0 0 10px 4px rgba(0, 255, 150, 0.5), 0 0 20px 8px rgba(0, 255, 150, 0.2);
   border-radius: 2px;
+  animation: ee-laser-flash 0.3s ease-out forwards;
 }
 
-/* === Explosion === */
+@keyframes ee-laser-flash {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+/* ═══ Explosion ═══ */
 .ee-explosion {
   position: absolute;
   width: 10px;
@@ -126,11 +147,11 @@
 
 @keyframes ee-explode {
   0%   { transform: scale(1); opacity: 1; }
-  50%  { transform: scale(8); opacity: 0.8; }
-  100% { transform: scale(12); opacity: 0; }
+  50%  { transform: scale(clamp(4, 1vw + 3, 8)); opacity: 0.8; }
+  100% { transform: scale(clamp(6, 2vw + 4, 12)); opacity: 0; }
 }
 
-/* === Missile (Phase 3) === */
+/* ═══ Missile (Phase 3) ═══ */
 .ee-missile {
   position: absolute;
   width: 8px;
@@ -140,7 +161,6 @@
   box-shadow: 0 0 6px 2px rgba(255, 100, 50, 0.4);
 }
 
-/* Fins at the bottom */
 .ee-missile::before {
   content: '';
   position: absolute;
@@ -152,7 +172,6 @@
   clip-path: polygon(0% 100%, 50% 0%, 100% 100%);
 }
 
-/* Flame at the bottom */
 .ee-missile::after {
   content: '';
   position: absolute;
@@ -164,6 +183,11 @@
   background: radial-gradient(ellipse at center top, #ff8800, #ff4400, transparent);
   border-radius: 0 0 50% 50%;
   animation: ee-engine-flicker 0.1s ease-in-out infinite alternate;
+}
+
+@keyframes ee-engine-flicker {
+  from { opacity: 0.7; transform: translateX(-50%) scaleY(0.8); }
+  to   { opacity: 1; transform: translateX(-50%) scaleY(1.3); }
 }
 
 .ee-missile-trail {
@@ -184,19 +208,13 @@
   transform: translateY(-50%);
   white-space: nowrap;
   font-family: 'Arial Narrow', Arial, sans-serif;
-  font-size: 8px;
+  font-size: clamp(7px, 1vw + 5px, 9px);
   font-weight: bold;
   color: #fff;
   text-shadow: 0 0 4px rgba(0,0,0,1);
   letter-spacing: 1px;
 }
 
-@keyframes ee-missile-rise {
-  0%   { bottom: -40px; }
-  100% { bottom: calc(100% - var(--target-top) - 30px); }
-}
-
-/* Green-tinted explosion for saucer */
 .ee-explosion-green {
   background: radial-gradient(circle, #fff 0%, #aaffcc 20%, #00ff88 50%, #009944 75%, transparent 100%);
   animation: ee-explode 1.2s ease-out forwards;
@@ -209,10 +227,10 @@
   left: 50%;
   transform: translate(-50%, -50%);
   font-family: 'Arial Narrow', Arial, sans-serif;
-  font-size: 18px;
+  font-size: clamp(14px, 3vw + 6px, 22px);
   font-weight: bold;
   color: #fff;
-  letter-spacing: 3px;
+  letter-spacing: clamp(1px, 0.5vw, 3px);
   text-shadow: 0 0 10px rgba(255, 100, 50, 0.8), 0 0 20px rgba(255, 100, 50, 0.4);
   animation: ee-text-flash 2s ease-out forwards;
 }
@@ -222,22 +240,4 @@
   20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
   40%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
-}
-
-/* === Flight path keyframes === */
-@keyframes ee-fly-right {
-  0%   { transform: translateX(-100px); }
-  100% { transform: translateX(calc(100vw + 100px)); }
-}
-
-@keyframes ee-fly-left-stop {
-  0%   { transform: translateX(calc(100vw + 100px)); }
-  60%  { transform: translateX(50vw); }
-  100% { transform: translateX(50vw); }
-}
-
-@keyframes ee-fly-left-jet {
-  0%   { transform: translateX(calc(100vw + 100px)); }
-  35%  { transform: translateX(40vw); }
-  100% { transform: translateX(40vw); }
 }
