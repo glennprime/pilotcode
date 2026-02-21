@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pilotcode-v18';
+const CACHE_NAME = 'pilotcode-v19';
 const ASSETS = [
   '/',
   '/index.html',
@@ -13,9 +13,6 @@ const ASSETS = [
   '/js/images.js',
   '/js/easter-egg.js',
   '/img/ufo.png',
-  '/img/jet-right.png',
-  '/img/jet-left.png',
-  '/img/missile.png',
   '/manifest.json',
 ];
 
