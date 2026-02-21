@@ -8,6 +8,7 @@ import { SessionManager } from '../claude/manager.js';
 import { ClaudeProcess } from '../claude/process.js';
 import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DATA_DIR } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
+import { findValidSession } from '../claude/sessions.js';
 import { log, sessionLog } from '../logger.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
@@ -330,29 +331,64 @@ function handleResumeSession(
   // Check if process is already running (follows alias chain)
   let proc = manager.getProcess(sessionId);
   if (proc && proc.isAlive) {
-    sessionLog('RESUME_FOUND_ALIVE', { requestedId: sessionId, processSessionId: proc.sessionId || 'unknown' });
-    setCurrent(proc, sessionId);
+    // Use the process's actual session ID for client tracking — after ID_DRIFT
+    // the broadcast loop uses proc.sessionId, not the originally requested ID.
+    const actualSid = proc.sessionId || sessionId;
+    sessionLog('RESUME_FOUND_ALIVE', { requestedId: sessionId, actualSid, processSessionId: proc.sessionId || 'unknown' });
+    setCurrent(proc, actualSid);
     if (onProcSpawned) onProcSpawned(proc);
-    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId }));
-    replayBufferedMessages(ws, sessionId);
-    wireExistingProcess(ws, proc, sessionId, manager);
+    // Also add client under the requested ID in case broadcasts still use it
+    addClient(actualSid, ws);
+    if (actualSid !== sessionId) addClient(sessionId, ws);
+    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid }));
+    replayBufferedMessages(ws, actualSid);
+    wireExistingProcess(ws, proc, actualSid, manager);
     return;
   }
 
   // Spawn new process to resume the session
   const sessions = manager.loadSessions();
   const meta = sessions.find((s) => s.id === sessionId);
-  const cwd = meta?.cwd || process.cwd();
-  const name = meta?.name || 'Resumed Session';
-  const model = meta?.model;
+  if (!meta) {
+    sessionLog('RESUME_UNKNOWN', { sessionId, reason: 'not_in_sessions_json' });
+    ws.send(JSON.stringify({ type: 'error', error: 'Session not found.' }));
+    return;
+  }
+  const cwd = meta.cwd;
+  const name = meta.name;
+  const model = meta.model;
 
-  sessionLog('RESUME_SPAWN', { sessionId, name, cwd, model: model || 'default', metaFound: !!meta });
-  proc = manager.createProcess({ cwd, resume: sessionId, model });
-  if (onProcSpawned) onProcSpawned(proc);
-  ensureBroadcastWired({
-    proc, knownSessionId: null, manager, name, cwd,
-    model, replacesSessionId: sessionId, setCurrent, originWs: ws,
-  });
+  // Validate the session ID against Claude's .jsonl files before spawning
+  const validId = findValidSession(sessionId, cwd);
+
+  if (validId) {
+    // Resume a valid session (may be a different ID than originally requested)
+    if (validId !== sessionId) {
+      sessionLog('RESUME_FALLBACK', { requestedId: sessionId, validId, name, cwd });
+    }
+    sessionLog('RESUME_SPAWN', { sessionId: validId, name, cwd, model: model || 'default', metaFound: !!meta });
+    proc = manager.createProcess({ cwd, resume: validId, model });
+    if (onProcSpawned) onProcSpawned(proc);
+    ensureBroadcastWired({
+      proc, knownSessionId: null, manager, name, cwd,
+      model, replacesSessionId: sessionId, setCurrent, originWs: ws,
+    });
+  } else {
+    // No valid session found — start fresh in the same cwd with same model
+    sessionLog('RESUME_FRESH', { requestedId: sessionId, name, cwd, model: model || 'default', reason: 'no_valid_session' });
+    proc = manager.createProcess({ cwd, model });
+    if (onProcSpawned) onProcSpawned(proc);
+    // Notify client this is a fresh session, not a true resume
+    ws.send(JSON.stringify({
+      type: 'session_fresh_start',
+      message: 'Previous session not found. Started a new session.',
+      originalSessionId: sessionId,
+    }));
+    ensureBroadcastWired({
+      proc, knownSessionId: null, manager, name, cwd,
+      model, setCurrent, originWs: ws,
+    });
+  }
 }
 
 function handleRejoinSession(
@@ -370,10 +406,13 @@ function handleRejoinSession(
   // Re-attach to an already-running process without spawning a new one
   const proc = manager.getProcess(sessionId);
   if (proc && proc.isAlive) {
-    setCurrent(proc, sessionId);
-    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId }));
-    replayBufferedMessages(ws, sessionId);
-    wireExistingProcess(ws, proc, sessionId, manager);
+    const actualSid = proc.sessionId || sessionId;
+    setCurrent(proc, actualSid);
+    addClient(actualSid, ws);
+    if (actualSid !== sessionId) addClient(sessionId, ws);
+    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid }));
+    replayBufferedMessages(ws, actualSid);
+    wireExistingProcess(ws, proc, actualSid, manager);
   } else {
     // Process is gone — tell the client so it can resume properly
     ws.send(JSON.stringify({ type: 'session_not_running', sessionId }));
@@ -401,10 +440,10 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
   proc.on('message', (msg: SDKMessage) => {
     if (msg.type === 'system' && msg.session_id) {
       const sid = msg.session_id;
-      sessionId = sid;
 
       if (!sessionInitDone) {
         sessionInitDone = true;
+        sessionId = sid;
         sessionLog('INIT', { newId: sid, replacesId: replacesSessionId || 'none', name });
         if (setCurrent) setCurrent(proc, sid);
 
@@ -416,6 +455,12 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
 
         // Notify clients of the session ID
         broadcastAll(sid, JSON.stringify({ type: 'session_id_update', oldSessionId: replacesSessionId || sid, newSessionId: sid }));
+      } else if (sid !== sessionId) {
+        // Claude changed session ID after init (normal on resume — reverts to original).
+        // Do NOT migrate clients or change our canonical session ID. Just log it
+        // and register an alias so the process can be found by either ID.
+        sessionLog('ID_DRIFT_IGNORED', { canonicalId: sessionId, driftedId: sid, name });
+        manager.registerAlias(sid, sessionId!);
       }
     }
 
@@ -526,17 +571,13 @@ function handleProcessClose(
   if (!sessionId) {
     const fallbackSid = replacesSessionId || null;
     sessionLog('EXIT_NO_SESSION_ID', { fallbackId: fallbackSid || 'none', code });
-    if (fallbackSid) {
-      broadcastAll(fallbackSid, JSON.stringify({
-        type: 'process_exit', code,
-        error: 'Session process failed to start. Try creating a new session.',
-      }));
-    } else if (originWs && originWs.readyState === WebSocket.OPEN) {
-      originWs.send(JSON.stringify({
-        type: 'process_exit', code,
-        error: 'Session process failed to start.',
-      }));
-    }
+    const errorMsg = JSON.stringify({
+      type: 'process_exit', code,
+      error: 'Session expired. Send a message to start a new session.',
+    });
+    // Try broadcast AND direct send — client may not be in broadcast set yet
+    if (fallbackSid) broadcastAll(fallbackSid, errorMsg);
+    if (originWs && originWs.readyState === WebSocket.OPEN) originWs.send(errorMsg);
     return;
   }
 
