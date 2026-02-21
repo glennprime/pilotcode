@@ -40,8 +40,8 @@ function runPhase1(overlay) {
   overlay.appendChild(ufo);
   overlay.appendChild(jet);
 
-  ufo.style.top = '12%';
-  jet.style.top = '15%';
+  ufo.style.top = '35%';
+  jet.style.top = '38%';
 
   const projectiles = [];
   const shotTimes = [0.2, 0.35, 0.5, 0.65, 0.8];
@@ -54,7 +54,7 @@ function runPhase1(overlay) {
     jet.style.left = jetX + 'px';
 
     // wobble the ufo
-    ufo.style.top = `calc(12% + ${Math.sin(t * 20) * 3}px)`;
+    ufo.style.top = `calc(35% + ${Math.sin(t * 20) * 3}px)`;
 
     // fire shots
     for (const st of shotTimes) {
@@ -95,8 +95,8 @@ function runPhase2(overlay) {
   overlay.appendChild(jet);
   overlay.appendChild(ufo);
 
-  jet.style.top = '15%';
-  ufo.style.top = '12%';
+  jet.style.top = '38%';
+  ufo.style.top = '35%';
 
   let laserFired = false;
   let exploded = false;
@@ -121,7 +121,7 @@ function runPhase2(overlay) {
     const ufoEased = 1 - Math.pow(1 - ufoT, 3);
     const ufoX = W + 80 + gap + (ufoStop - W - 80 - gap) * ufoEased;
     ufo.style.left = ufoX + 'px';
-    ufo.style.top = `calc(12% + ${Math.sin(t * 20) * 3}px)`;
+    ufo.style.top = `calc(35% + ${Math.sin(t * 20) * 3}px)`;
 
     // Fire laser at t=0.45
     if (t >= 0.45 && !laserFired) {
