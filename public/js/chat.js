@@ -463,15 +463,23 @@ export class Chat {
   }
 
   async switchSession(newSessionId) {
-    await this.saveHistory();
+    // Clear UI state synchronously first — before any await —
+    // so server messages (session_rejoined, session_busy) that arrive
+    // during async operations won't get overridden.
     this.messagesEl.innerHTML = '';
     this.currentAssistantEl = null;
     this.currentAssistantText = '';
     this.isStreaming = false;
     this.activeTasks.clear();
+    this.hideThinking();
     this.setWorking(false);
     this.sessionId = newSessionId;
     this.history = [];
+
+    // Async operations: save old history, load new history.
+    // During these awaits, WebSocket messages will be processed,
+    // and session_rejoined / session_busy will restore busy state if needed.
+    await this.saveHistory();
 
     if (newSessionId) {
       await this.loadHistory(newSessionId);
