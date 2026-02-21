@@ -231,31 +231,20 @@ function createUFO() {
 function createJet(direction) {
   const wrap = document.createElement('div');
   wrap.className = 'ee-sprite';
-  wrap.style.width = '90px';
-  wrap.style.height = '55px';
-
-  const flip = direction === 'left' ? 'transform="translate(120,0) scale(-1,1)"' : '';
-  wrap.innerHTML = `<svg viewBox="0 0 120 50" width="90" height="38" style="overflow:visible">
-    <defs>
-      <filter id="jet-shadow">
-        <feDropShadow dx="1" dy="2" stdDeviation="2" flood-opacity="0.4"/>
-      </filter>
-    </defs>
-    <g ${flip} filter="url(#jet-shadow)">
-      <!-- swept wings -->
-      <polygon points="75,25 85,22 62,2 48,19 48,31 62,48 85,28" fill="#2e2e38"/>
-      <!-- tail fins -->
-      <polygon points="28,24 16,8 8,20 8,30 16,42 28,26" fill="#2e2e38"/>
-      <!-- fuselage -->
-      <polygon points="116,25 104,21 28,22 18,24 8,25 18,26 28,28 104,29" fill="#3a3a44"/>
-      <!-- canopy -->
-      <ellipse cx="92" cy="25" rx="7" ry="3.5" fill="#446688" opacity="0.8"/>
-      <!-- engine glow -->
-      <ellipse cx="5" cy="25" rx="7" ry="5" fill="#ff6600" opacity="0.7"/>
-      <ellipse cx="3" cy="25" rx="9" ry="6" fill="#ff8800" opacity="0.15"/>
-    </g>
-  </svg>
-  <div class="ee-jet-label">NORTHROP GRUMMAN</div>`;
+  wrap.style.width = '120px';
+  wrap.style.height = '60px';
+  const img = document.createElement('img');
+  img.src = '/img/jet-right.png';
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = 'contain';
+  img.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))';
+  img.draggable = false;
+  // Use dedicated left-facing image when available
+  if (direction === 'left') {
+    img.src = '/img/jet-left.png';
+  }
+  wrap.appendChild(img);
   return wrap;
 }
 
