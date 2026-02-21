@@ -13,7 +13,7 @@ export class Chat {
     this.saveTimer = null;
     this.thinkingEl = null;
     this.activeTasks = new Map(); // id -> { name, description, status }
-    this.replayMode = false; // true during buffer replay after session switch
+    this.renderedMessageIds = new Set(); // dedup assistant messages during buffer replay
   }
 
   setSession(sessionId) {
@@ -276,7 +276,7 @@ export class Chat {
         this.clearInteractiveCards();
 
         if (hasText) {
-          if (!this.replayMode) this.hideThinking();
+          this.hideThinking();
           this.renderAssistantMessage(msg.message);
         }
 
@@ -284,15 +284,15 @@ export class Chat {
         const askQuestion = toolUses.find(tu => tu.name === 'AskUserQuestion');
         const exitPlan = toolUses.find(tu => tu.name === 'ExitPlanMode');
 
-        if (askQuestion && !this.replayMode) {
+        if (askQuestion) {
           this.hideThinking();
           this.setWorking(false);
           this.renderQuestionCard(askQuestion.input?.questions || []);
-        } else if (exitPlan && !this.replayMode) {
+        } else if (exitPlan) {
           this.hideThinking();
           this.setWorking(false);
           this.renderPlanApproval();
-        } else if (toolUses.length > 0 && !this.replayMode) {
+        } else if (toolUses.length > 0) {
           for (const tu of toolUses) {
             if (tu.name === 'Task' && tu.id) {
               const desc = tu.input?.description || tu.input?.subagent_type || 'Agent';
@@ -326,11 +326,10 @@ export class Chat {
       }
 
       case 'result':
-        if (!this.replayMode) {
-          this.hideThinking();
-          this.finishStreaming();
-          this.setWorking(false);
-        }
+        // Always process — if session is still busy, session_busy re-shows spinner after replay
+        this.hideThinking();
+        this.finishStreaming();
+        this.setWorking(false);
         if (msg.is_error && msg.result) {
           this.addSystemMessage(`Error: ${msg.result}`);
         }
@@ -381,11 +380,9 @@ export class Chat {
         break;
 
       case 'process_exit':
-        if (!this.replayMode) {
-          this.hideThinking();
-          this.finishStreaming();
-          this.setWorking(false);
-        }
+        this.hideThinking();
+        this.finishStreaming();
+        this.setWorking(false);
         if (msg.error) {
           this.addSystemMessage(msg.error);
         } else if (msg.code !== 0 && msg.code !== null) {
@@ -424,6 +421,10 @@ export class Chat {
 
   renderAssistantMessage(message) {
     if (!message?.content) return;
+    // Deduplicate: skip if this exact message was already rendered (buffer replay)
+    const msgId = message.id;
+    if (msgId && this.renderedMessageIds.has(msgId)) return;
+    if (msgId) this.renderedMessageIds.add(msgId);
     const blocks = Array.isArray(message.content) ? message.content : [{ type: 'text', text: String(message.content) }];
 
     this.finishStreaming();
@@ -483,6 +484,7 @@ export class Chat {
     this.currentAssistantText = '';
     this.isStreaming = false;
     this.activeTasks.clear();
+    this.renderedMessageIds.clear();
     this.hideThinking();
     this.setWorking(false);
     this.sessionId = newSessionId;
