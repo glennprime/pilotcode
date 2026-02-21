@@ -13,6 +13,7 @@ export class Chat {
     this.saveTimer = null;
     this.thinkingEl = null;
     this.activeTasks = new Map(); // id -> { name, description, status }
+    this.replayMode = false; // true during buffer replay after session switch
   }
 
   setSession(sessionId) {
@@ -155,10 +156,10 @@ export class Chat {
         const toolUses = blocks.filter(b => b.type === 'tool_use');
 
         if (hasText) {
-          this.hideThinking();
+          if (!this.replayMode) this.hideThinking();
           this.renderAssistantMessage(msg.message);
         }
-        if (toolUses.length > 0) {
+        if (toolUses.length > 0 && !this.replayMode) {
           for (const tu of toolUses) {
             if (tu.name === 'Task' && tu.id) {
               const desc = tu.input?.description || tu.input?.subagent_type || 'Agent';
@@ -192,9 +193,11 @@ export class Chat {
       }
 
       case 'result':
-        this.hideThinking();
-        this.finishStreaming();
-        this.setWorking(false);
+        if (!this.replayMode) {
+          this.hideThinking();
+          this.finishStreaming();
+          this.setWorking(false);
+        }
         if (msg.is_error && msg.result) {
           this.addSystemMessage(`Error: ${msg.result}`);
         }
@@ -216,9 +219,11 @@ export class Chat {
         break;
 
       case 'process_exit':
-        this.hideThinking();
-        this.finishStreaming();
-        this.setWorking(false);
+        if (!this.replayMode) {
+          this.hideThinking();
+          this.finishStreaming();
+          this.setWorking(false);
+        }
         if (msg.error) {
           this.addSystemMessage(msg.error);
         } else if (msg.code !== 0 && msg.code !== null) {
