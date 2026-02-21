@@ -652,35 +652,43 @@ html, body {
   font-size: 14px;
   font-weight: 500;
   flex: 1;
-  cursor: pointer;
 }
 
-.session-rename-btn {
+/* Long-press / right-click action sheet */
+.session-action-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.session-action {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text);
   font-size: 14px;
-  padding: 2px 6px;
+  padding: 10px 16px;
+  text-align: left;
   cursor: pointer;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.session-delete-btn {
-  background: none;
-  border: none;
+.session-action:active {
+  background: var(--bg-hover);
+}
+
+.session-action.delete-action {
   color: var(--red);
-  font-size: 18px;
-  padding: 2px 6px;
-  cursor: pointer;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
 }
 
-.session-item:hover .session-rename-btn,
-.session-item:hover .session-delete-btn { opacity: 1; }
+.session-action.cancel-action {
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
 
 .session-item .session-item-meta {
   font-size: 11px;

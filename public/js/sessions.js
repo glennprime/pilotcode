@@ -63,29 +63,44 @@ export class SessionUI {
           <div class="session-item-name">
             ${s.busy ? '<span class="active-dot busy"></span>' : s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
           </div>
-          <button class="session-rename-btn" title="Rename">&#9998;</button>
-          <button class="session-delete-btn" title="Delete">&times;</button>
         </div>
         <div class="session-item-meta">${escapeHtml(s.cwd)} &middot; ${s.model ? shortModel(s.model) : 'Sonnet'} &middot; ${timeAgo(s.lastUsed)}</div>
       `;
 
-      // Click to resume
-      el.querySelector('.session-item-name').onclick = () => {
+      // Tap anywhere to switch session
+      el.onclick = () => {
         this.resumeSession(s.id, s.name);
         this.closeDrawer();
       };
 
-      // Rename button
-      el.querySelector('.session-rename-btn').onclick = (e) => {
-        e.stopPropagation();
-        this.renameSession(s.id, s.name, el);
+      // Long-press for rename/delete actions
+      let pressTimer = null;
+      let didLongPress = false;
+      const startPress = (e) => {
+        didLongPress = false;
+        pressTimer = setTimeout(() => {
+          didLongPress = true;
+          e.preventDefault();
+          this.showSessionActions(s.id, s.name, el);
+        }, 500);
       };
-
-      // Delete button
-      el.querySelector('.session-delete-btn').onclick = (e) => {
-        e.stopPropagation();
-        this.deleteSession(s.id);
+      const cancelPress = () => {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
       };
+      const endPress = (e) => {
+        cancelPress();
+        // If long-press triggered, prevent the tap from also firing
+        if (didLongPress) { e.preventDefault(); e.stopPropagation(); }
+      };
+      el.addEventListener('touchstart', startPress, { passive: false });
+      el.addEventListener('touchend', endPress);
+      el.addEventListener('touchcancel', cancelPress);
+      el.addEventListener('touchmove', cancelPress);
+      // Desktop: right-click for actions
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.showSessionActions(s.id, s.name, el);
+      });
 
       this.list.appendChild(el);
     }
@@ -137,6 +152,40 @@ export class SessionUI {
       document.getElementById('session-name').textContent = 'No Session';
     }
     this.refreshList();
+  }
+
+  showSessionActions(sessionId, name, el) {
+    // Remove any existing action sheet
+    document.querySelectorAll('.session-action-sheet').forEach(s => s.remove());
+
+    const sheet = document.createElement('div');
+    sheet.className = 'session-action-sheet';
+    sheet.innerHTML = `
+      <button class="session-action rename-action">Rename</button>
+      <button class="session-action delete-action">Delete</button>
+      <button class="session-action cancel-action">Cancel</button>
+    `;
+
+    sheet.querySelector('.rename-action').onclick = (e) => {
+      e.stopPropagation();
+      sheet.remove();
+      this.renameSession(sessionId, name, el);
+    };
+
+    sheet.querySelector('.delete-action').onclick = (e) => {
+      e.stopPropagation();
+      sheet.remove();
+      if (confirm(`Delete "${name}"? This cannot be undone.`)) {
+        this.deleteSession(sessionId);
+      }
+    };
+
+    sheet.querySelector('.cancel-action').onclick = (e) => {
+      e.stopPropagation();
+      sheet.remove();
+    };
+
+    el.appendChild(sheet);
   }
 
   showNewSessionModal() {
