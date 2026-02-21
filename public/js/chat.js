@@ -141,6 +141,123 @@ export class Chat {
     if (el) el.remove();
   }
 
+  clearInteractiveCards() {
+    this.messagesEl.querySelectorAll('.question-card, .plan-approval-card').forEach(el => el.remove());
+  }
+
+  renderQuestionCard(questions) {
+    if (!questions || questions.length === 0) {
+      // No structured questions — just transition to input mode
+      this.messagesEl.appendChild(createSystemNote('Claude is waiting for your input.'));
+      this.scrollToBottom();
+      return;
+    }
+
+    for (const q of questions) {
+      const card = document.createElement('div');
+      card.className = 'question-card';
+
+      if (q.header) {
+        const header = document.createElement('div');
+        header.className = 'question-header';
+        header.textContent = q.header;
+        card.appendChild(header);
+      }
+
+      const questionText = document.createElement('div');
+      questionText.className = 'question-text';
+      questionText.textContent = q.question;
+      card.appendChild(questionText);
+
+      if (q.options?.length) {
+        const optionsEl = document.createElement('div');
+        optionsEl.className = 'question-options';
+        const selected = new Set();
+
+        for (const opt of q.options) {
+          const btn = document.createElement('button');
+          btn.className = 'question-option';
+          btn.innerHTML = `<span class="option-label">${escapeHtml(opt.label)}</span>`;
+          if (opt.description) {
+            btn.innerHTML += `<span class="option-desc">${escapeHtml(opt.description)}</span>`;
+          }
+
+          btn.onclick = () => {
+            const input = document.getElementById('message-input');
+            const sendBtn = document.getElementById('send-btn');
+
+            if (q.multiSelect) {
+              // Toggle selection
+              if (selected.has(opt.label)) {
+                selected.delete(opt.label);
+                btn.classList.remove('selected');
+              } else {
+                selected.add(opt.label);
+                btn.classList.add('selected');
+              }
+              input.value = [...selected].join(', ');
+            } else {
+              // Single select — deselect others
+              optionsEl.querySelectorAll('.question-option').forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+              input.value = opt.label;
+            }
+
+            input.focus();
+            sendBtn.disabled = !input.value.trim();
+          };
+
+          optionsEl.appendChild(btn);
+        }
+        card.appendChild(optionsEl);
+      }
+
+      this.messagesEl.appendChild(card);
+    }
+    this.scrollToBottom();
+    document.getElementById('message-input').focus();
+  }
+
+  renderPlanApproval() {
+    const card = document.createElement('div');
+    card.className = 'plan-approval-card';
+
+    const label = document.createElement('div');
+    label.className = 'plan-label';
+    label.textContent = 'Plan ready for approval';
+    card.appendChild(label);
+
+    const actions = document.createElement('div');
+    actions.className = 'plan-actions';
+
+    const approveBtn = document.createElement('button');
+    approveBtn.className = 'plan-btn plan-approve';
+    approveBtn.textContent = 'Approve';
+    approveBtn.onclick = () => {
+      const input = document.getElementById('message-input');
+      input.value = 'Looks good, proceed.';
+      input.dispatchEvent(new Event('input'));
+      document.getElementById('send-btn').click();
+    };
+
+    const changesBtn = document.createElement('button');
+    changesBtn.className = 'plan-btn plan-changes';
+    changesBtn.textContent = 'Request Changes';
+    changesBtn.onclick = () => {
+      const input = document.getElementById('message-input');
+      input.value = '';
+      input.placeholder = 'Describe the changes you want...';
+      input.focus();
+    };
+
+    actions.appendChild(approveBtn);
+    actions.appendChild(changesBtn);
+    card.appendChild(actions);
+
+    this.messagesEl.appendChild(card);
+    this.scrollToBottom();
+  }
+
   handleSDKMessage(msg, onPermissionResponse) {
     switch (msg.type) {
       case 'system':
@@ -155,11 +272,27 @@ export class Chat {
         const hasText = blocks.some(b => b.type === 'text' && b.text);
         const toolUses = blocks.filter(b => b.type === 'tool_use');
 
+        // Clear any previous interactive cards (question/plan) when new assistant content arrives
+        this.clearInteractiveCards();
+
         if (hasText) {
           if (!this.replayMode) this.hideThinking();
           this.renderAssistantMessage(msg.message);
         }
-        if (toolUses.length > 0 && !this.replayMode) {
+
+        // Check for interactive tools that need user input
+        const askQuestion = toolUses.find(tu => tu.name === 'AskUserQuestion');
+        const exitPlan = toolUses.find(tu => tu.name === 'ExitPlanMode');
+
+        if (askQuestion && !this.replayMode) {
+          this.hideThinking();
+          this.setWorking(false);
+          this.renderQuestionCard(askQuestion.input?.questions || []);
+        } else if (exitPlan && !this.replayMode) {
+          this.hideThinking();
+          this.setWorking(false);
+          this.renderPlanApproval();
+        } else if (toolUses.length > 0 && !this.replayMode) {
           for (const tu of toolUses) {
             if (tu.name === 'Task' && tu.id) {
               const desc = tu.input?.description || tu.input?.subagent_type || 'Agent';
@@ -424,4 +557,11 @@ export class Chat {
 
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function createSystemNote(text) {
+  const el = document.createElement('div');
+  el.className = 'message system';
+  el.textContent = text;
+  return el;
 }
