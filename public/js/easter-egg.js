@@ -47,9 +47,17 @@ function runPhase1(overlay) {
   const shotTimes = [0.2, 0.35, 0.5, 0.65, 0.8];
   const shotsFired = new Set();
 
-  return anim(4000, (t) => {
-    const ufoX = lerp(-80, W + 80, t);
-    const jetX = ufoX - gap;
+  // Both fly fully offscreen-left to fully offscreen-right
+  // UFO leads, jet trails behind by `gap` at the start
+  // but both exit past the right edge
+  const ufoStart = -100;
+  const ufoEnd = W + 100;
+  const jetStart = ufoStart - gap;
+  const jetEnd = W + 350; // jet must also fly fully off right edge
+
+  return anim(4500, (t) => {
+    const ufoX = lerp(ufoStart, ufoEnd, t);
+    const jetX = lerp(jetStart, jetEnd, t);
     ufo.style.left = ufoX + 'px';
     jet.style.left = jetX + 'px';
 
