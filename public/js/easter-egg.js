@@ -6,6 +6,17 @@ let eeInitTimer = null;
 export function initEasterEgg() {
   eeInitTimer = setTimeout(runEasterEgg, 30_000);
   eeTimer = setInterval(runEasterEgg, 3_600_000);
+
+  // Hidden trigger button in header
+  const trigger = document.getElementById('ee-trigger');
+  if (trigger) {
+    trigger.addEventListener('click', () => {
+      // Don't stack animations
+      if (!document.getElementById('ee-overlay')) {
+        runEasterEgg();
+      }
+    });
+  }
 }
 
 function runEasterEgg() {

@@ -1,5 +1,11 @@
 /* Easter Egg: Northrop Grumman vs UFO */
 
+/* Hidden trigger — diamond icon on no-session screen */
+#ee-trigger {
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
 #ee-overlay {
   position: fixed;
   inset: 0;
