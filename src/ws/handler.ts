@@ -38,6 +38,9 @@ const sessionClients = new Map<string, Set<WebSocket>>();
 // Cache pending permission request inputs so we can send them back as updatedInput
 const pendingPermissionInputs = new Map<string, unknown>();
 
+// Track pending ExitPlanMode tool_use IDs so we can suppress the error tool_result
+const pendingPlanApprovals = new Map<string, string>(); // sessionId -> toolUseId
+
 // Track crash retry state per session
 const crashRetries = new Map<string, { count: number; firstAttempt: number }>();
 const MAX_CRASH_RETRIES = 3;
@@ -98,7 +101,7 @@ const wiredProcesses = new WeakSet<ClaudeProcess>();
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
 
 // Message types that are relevant for buffer replay on rejoin/resume
-const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
+const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request', 'plan_approval']);
 
 /**
  * Tag a message with its session ID so clients can filter by session.
@@ -323,6 +326,10 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
 
         case 'permission_response':
           handlePermissionResponse(msg, connState.currentProc);
+          break;
+
+        case 'plan_response':
+          handlePlanResponse(msg, connState.currentProc, connState.currentSessionId);
           break;
 
         case 'interrupt':
@@ -606,6 +613,46 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       }
     }
 
+    // Intercept ExitPlanMode tool_use in assistant messages
+    if (sessionId && msg.type === 'assistant' && (msg as any).message?.content) {
+      const content = (msg as any).message.content;
+      if (Array.isArray(content)) {
+        const exitPlanBlock = content.find(
+          (b: any) => b.type === 'tool_use' && b.name === 'ExitPlanMode'
+        );
+        if (exitPlanBlock) {
+          pendingPlanApprovals.set(sessionId, exitPlanBlock.id);
+          log('ws', `ExitPlanMode detected in session ${sessionId}, toolUseId=${exitPlanBlock.id}`);
+          // Send plan_approval to all clients
+          broadcastAll(sessionId, JSON.stringify({
+            type: 'plan_approval',
+            plan: exitPlanBlock.input?.plan || '',
+            allowedPrompts: exitPlanBlock.input?.allowedPrompts || [],
+            toolUseId: exitPlanBlock.id,
+          }));
+          // Still broadcast the original assistant message (may contain text)
+        }
+      }
+    }
+
+    // Suppress the error tool_result for ExitPlanMode ("Exit plan mode?")
+    if (sessionId && msg.type === 'user' && (msg as any).message?.content) {
+      const content = (msg as any).message.content;
+      if (Array.isArray(content)) {
+        const pendingToolUseId = pendingPlanApprovals.get(sessionId);
+        if (pendingToolUseId) {
+          const hasMatch = content.some(
+            (b: any) => b.type === 'tool_result' && b.tool_use_id === pendingToolUseId
+          );
+          if (hasMatch) {
+            log('ws', `Suppressing ExitPlanMode error tool_result for session ${sessionId}`);
+            pendingPlanApprovals.delete(sessionId);
+            return; // Don't broadcast the error tool_result
+          }
+        }
+      }
+    }
+
     // Broadcast all Claude messages to every client on this session
     if (sessionId) {
       broadcastAll(sessionId, JSON.stringify(msg));
@@ -876,6 +923,20 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
   }
 
   proc.sendMessage(blocks.length > 0 ? blocks : fullText);
+}
+
+function handlePlanResponse(msg: WSMessage, proc: ClaudeProcess | null, sessionId: string | null): void {
+  if (!proc || !proc.isAlive) return;
+  if (msg.approved) {
+    log('ws', `Plan approved for session ${sessionId}`);
+    proc.sendMessage('The user has approved the plan. Exit plan mode and proceed with implementation.');
+  } else {
+    log('ws', `Plan rejected for session ${sessionId}`);
+    proc.sendMessage('The user has rejected the plan. Please revise your approach.');
+  }
+  if (sessionId) {
+    setSessionBusy(sessionId, 'busy');
+  }
 }
 
 function handlePermissionResponse(msg: WSMessage, proc: ClaudeProcess | null): void {

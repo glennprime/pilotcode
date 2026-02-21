@@ -1,3 +1,5 @@
+import { renderMarkdown, addCopyButtons } from './markdown.js';
+
 export function renderPermissionCard(msg, onRespond) {
   const card = document.createElement('div');
   card.className = 'permission-card';
@@ -36,6 +38,40 @@ export function renderPermissionCard(msg, onRespond) {
   card.querySelector('.btn-deny').onclick = () => {
     onRespond(msg.request_id, false);
     disableCard(card, 'Denied');
+  };
+
+  return card;
+}
+
+export function renderPlanCard(msg, onRespond) {
+  const card = document.createElement('div');
+  card.className = 'plan-card';
+
+  const planText = msg.plan || '(No plan content)';
+
+  card.innerHTML = `
+    <div class="plan-header">Plan Review</div>
+    <div class="plan-content"></div>
+    <div class="plan-actions">
+      <button class="btn-approve">Approve</button>
+      <button class="btn-reject">Reject</button>
+    </div>
+  `;
+
+  const contentEl = card.querySelector('.plan-content');
+  contentEl.innerHTML = renderMarkdown(planText);
+  addCopyButtons(contentEl);
+
+  card.querySelector('.btn-approve').onclick = () => {
+    onRespond(true);
+    const actions = card.querySelector('.plan-actions');
+    actions.innerHTML = '<span style="color: var(--green); font-size: 12px; font-weight: 600;">Approved</span>';
+  };
+
+  card.querySelector('.btn-reject').onclick = () => {
+    onRespond(false);
+    const actions = card.querySelector('.plan-actions');
+    actions.innerHTML = '<span style="color: var(--red); font-size: 12px; font-weight: 600;">Rejected</span>';
   };
 
   return card;
