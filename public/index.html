@@ -10,6 +10,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/easter-egg.css">
 </head>
 <body>
 
@@ -38,7 +39,12 @@
 
     <!-- No Session Prompt -->
     <div id="no-session-prompt">
-      <button id="start-session-btn">+ New Session</button>
+      <div class="no-session-inner">
+        <div class="no-session-glow"></div>
+        <div class="no-session-icon">&#9670;</div>
+        <p class="no-session-text">Start a conversation</p>
+        <button id="start-session-btn">New Session</button>
+      </div>
     </div>
 
     <!-- Messages -->
