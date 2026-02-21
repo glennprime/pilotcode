@@ -40,7 +40,7 @@ function runPhase1(overlay) {
   overlay.appendChild(ufo);
   overlay.appendChild(jet);
 
-  ufo.style.top = '35%';
+  ufo.style.top = '40%';
   jet.style.top = '38%';
 
   const projectiles = [];
@@ -57,7 +57,7 @@ function runPhase1(overlay) {
     const ufoX = jetX + gap;
     jet.style.left = jetX + 'px';
     ufo.style.left = ufoX + 'px';
-    ufo.style.top = `calc(35% + ${Math.sin(t * 20) * 3}px)`;
+    ufo.style.top = `calc(40% + ${Math.sin(t * 20) * 3}px)`;
 
     // fire shots from jet nose
     for (const st of shotTimes) {
@@ -100,7 +100,7 @@ function runPhase2(overlay) {
   overlay.appendChild(ufo);
 
   jet.style.top = '38%';
-  ufo.style.top = '35%';
+  ufo.style.top = '40%';
 
   let laserFired = false;
   let exploded = false;
@@ -119,7 +119,7 @@ function runPhase2(overlay) {
       ufo.style.left = ufoX + 'px';
       jet.style.left = jetX + 'px';
     }
-    ufo.style.top = `calc(35% + ${Math.sin(t * 20) * 3}px)`;
+    ufo.style.top = `calc(40% + ${Math.sin(t * 20) * 3}px)`;
 
     // Fire laser at t=0.4
     if (t >= 0.4 && !laserFired) {
