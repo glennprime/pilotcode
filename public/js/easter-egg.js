@@ -33,7 +33,7 @@ function runEasterEgg() {
 // ────────────────────────────────────────────────
 function runPhase1(overlay) {
   const W = window.innerWidth;
-  const gap = Math.max(W * 0.4, 120);
+  const gap = Math.max(W * 0.5, 200);
 
   const ufo = createUFO();
   const jet = createJet('right');
@@ -56,16 +56,17 @@ function runPhase1(overlay) {
     // wobble the ufo
     ufo.style.top = `calc(35% + ${Math.sin(t * 20) * 3}px)`;
 
-    // fire shots
+    // fire shots from jet nose
     for (const st of shotTimes) {
       if (t >= st && !shotsFired.has(st)) {
         shotsFired.add(st);
+        const jetRect = jet.getBoundingClientRect();
         const p = document.createElement('div');
         p.className = 'ee-projectile';
-        p.style.top = jet.style.top;
-        p.style.left = (jetX + 80) + 'px';
+        p.style.top = (jetRect.top + jetRect.height * 0.4) + 'px';
+        p.style.left = jetRect.right + 'px';
         overlay.appendChild(p);
-        projectiles.push({ el: p, startX: jetX + 80, startT: t });
+        projectiles.push({ el: p, startX: jetRect.right, startT: t });
       }
     }
 
@@ -231,8 +232,8 @@ function createUFO() {
 function createJet(direction) {
   const wrap = document.createElement('div');
   wrap.className = 'ee-sprite';
-  wrap.style.width = '120px';
-  wrap.style.height = '60px';
+  wrap.style.width = '300px';
+  wrap.style.height = '150px';
   const img = document.createElement('img');
   img.src = '/img/jet-right.png';
   img.style.width = '100%';
