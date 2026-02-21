@@ -15,10 +15,10 @@ export async function initMarkdown() {
   // Load highlight.js (non-blocking — app works without it)
   try {
     if (!window.hljs) {
-      await loadScript('https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js');
+      await loadScript('https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js');
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css';
+      link.href = 'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css';
       document.head.appendChild(link);
     }
     hlLoaded = true;

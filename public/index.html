@@ -10,6 +10,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/easter-egg.css">
 </head>
 <body>
 
@@ -32,7 +33,18 @@
       <span class="logo">PilotCode</span>
       <span id="session-name">No Session</span>
       <button id="ding-toggle" class="header-btn ding-on" title="Toggle notification sound">&#128276;</button>
+      <button id="push-toggle" class="header-btn push-off" title="Push notifications: OFF" style="display:none">⌚</button>
       <div id="connection-status"></div>
+    </div>
+
+    <!-- No Session Prompt -->
+    <div id="no-session-prompt">
+      <div class="no-session-inner">
+        <div class="no-session-glow"></div>
+        <div class="no-session-icon" id="ee-trigger">&#9670;</div>
+        <p class="no-session-text">Start a conversation</p>
+        <button id="start-session-btn">New Session</button>
+      </div>
     </div>
 
     <!-- Messages -->

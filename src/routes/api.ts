@@ -3,10 +3,11 @@ import multer from 'multer';
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
-import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD } from '../config.js';
+import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
 import { sessionBusyState } from '../ws/handler.js';
 import { requireAuth } from './auth.js';
+import { getSessionBusyState } from '../ws/handler.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
 mkdirSync(HISTORY_DIR, { recursive: true });
@@ -58,7 +59,7 @@ export function createApiRouter(manager: SessionManager): Router {
       sessions.map((s) => ({
         ...s,
         active: active.includes(s.id),
-        busy: sessionBusyState.get(s.id) || false,
+        busy: sessionBusyState.get(s.id) || (active.includes(s.id) && getSessionBusyState(s.id) !== 'idle'),
       }))
     );
   });
@@ -181,6 +182,17 @@ export function createApiRouter(manager: SessionManager): Router {
     } catch {
       res.json({ completed: partial, matches: [] });
     }
+  });
+
+  // Ntfy configuration
+  router.get('/api/ntfy', requireAuth, (_req: Request, res: Response) => {
+    res.json({ topic: getNtfyTopic() });
+  });
+
+  router.post('/api/ntfy', requireAuth, (req: Request, res: Response) => {
+    const { topic } = req.body;
+    setNtfyTopic(topic || null);
+    res.json({ ok: true, topic: topic || null });
   });
 
   // Health

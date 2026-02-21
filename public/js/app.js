@@ -3,6 +3,7 @@ import { Chat } from './chat.js';
 import { SessionUI } from './sessions.js';
 import { ImageHandler, renderImagePreview } from './images.js';
 import { initMarkdown } from './markdown.js';
+import { initEasterEgg } from './easter-egg.js';
 
 // State
 let wsClient;
@@ -70,6 +71,8 @@ function showApp() {
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').classList.add('active');
 
+  initEasterEgg();
+
   // WebSocket
   wsClient = new WSClient(handleMessage, handleStatus);
 
@@ -82,6 +85,8 @@ function showApp() {
     // When resuming an existing session, skip the auto-greet
     sessionGreeted = !!sessionId;
     chat.switchSession(sessionId || null);
+    // Show chat UI immediately when switching to an existing session
+    if (sessionId) hideNoSessionPrompt();
   });
 
   // Images
@@ -106,6 +111,15 @@ function showApp() {
   // Input handling
   setupInput();
   initDingToggle();
+  initNtfyToggle();
+
+  // Show no-session prompt, hide input until a session is active
+  showNoSessionPrompt();
+
+  // Wire "New Session" button in the center prompt
+  document.getElementById('start-session-btn').onclick = () => {
+    sessionUI.showNewSessionModal();
+  };
 }
 
 function setupInput() {
@@ -132,6 +146,19 @@ function setupInput() {
   };
 }
 
+function showNoSessionPrompt() {
+  document.getElementById('no-session-prompt').classList.add('active');
+  document.getElementById('messages').style.display = 'none';
+  document.getElementById('input-area').style.display = 'none';
+  document.getElementById('image-preview').style.display = 'none';
+}
+
+function hideNoSessionPrompt() {
+  document.getElementById('no-session-prompt').classList.remove('active');
+  document.getElementById('messages').style.display = '';
+  document.getElementById('input-area').style.display = '';
+}
+
 function sendMessage() {
   const input = document.getElementById('message-input');
   const text = input.value.trim();
@@ -139,7 +166,7 @@ function sendMessage() {
 
   if (!text && images.length === 0) return;
 
-  // If no active session, create one and queue the message
+  // No active session — user must create one via the modal
   if (!sessionUI.currentSessionId || sessionUI.currentSessionId === '__creating__') {
     if (creatingSession) return; // already creating, wait
     creatingSession = true;
@@ -187,6 +214,7 @@ function handleMessage(msg) {
         chat.setSession(msg.session_id);
         wsClient.setActiveSession(msg.session_id);
         creatingSession = false;
+        hideNoSessionPrompt();
 
         // Show queued message in chat (already sent to Claude via initialMessage)
         if (pendingMessage) {
@@ -214,6 +242,7 @@ function handleMessage(msg) {
         wsClient.setActiveSession(msg.newSessionId);
         localStorage.setItem('pilotcode_session', msg.newSessionId);
       }
+      hideNoSessionPrompt();
       break;
 
     // Reconnect: successfully rejoined running session — buffer replay incoming
@@ -221,6 +250,13 @@ function handleMessage(msg) {
       // Suppress the ding during buffer replay so switching sessions isn't noisy
       dingSuppressed = true;
       setTimeout(() => { dingSuppressed = false; }, 2000);
+      hideNoSessionPrompt();
+      break;
+
+    // Session is still busy — sent AFTER buffer replay so spinner isn't hidden by replayed messages
+    case 'session_busy':
+      chat.showThinking('Thinking...');
+      hideNoSessionPrompt();
       break;
 
     // Reconnect: process died while we were disconnected — auto-resume once
@@ -252,6 +288,7 @@ function handleMessage(msg) {
       sessionUI.currentSessionId = null;
       localStorage.removeItem('pilotcode_session');
       creatingSession = false;
+      showNoSessionPrompt();
       break;
 
     // Fresh start fallback — resume couldn't find a valid session
@@ -340,6 +377,62 @@ function playDing() {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.4);
   } catch {}
+}
+
+// Ntfy watch notifications
+async function initNtfyToggle() {
+  const btn = document.getElementById('push-toggle');
+  if (!btn) return;
+
+  // Check current state from server
+  try {
+    const res = await fetch('/api/ntfy');
+    const data = await res.json();
+    btn.style.display = 'inline-block';
+    updateNtfyButton(btn, !!data.topic);
+  } catch {
+    btn.style.display = 'inline-block';
+    updateNtfyButton(btn, false);
+  }
+
+  btn.onclick = async () => {
+    const res = await fetch('/api/ntfy');
+    const data = await res.json();
+
+    if (data.topic) {
+      // Disable — confirm first
+      if (confirm('Disable Apple Watch notifications?')) {
+        await fetch('/api/ntfy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic: null }),
+        });
+        updateNtfyButton(btn, false);
+      }
+    } else {
+      // Enable — ask for topic or generate one
+      const topic = prompt(
+        'Enter your ntfy topic (from the ntfy app on your phone).\n\n' +
+        'If you don\'t have one yet:\n' +
+        '1. Install "ntfy" from the App Store\n' +
+        '2. Tap + to subscribe to a topic\n' +
+        '3. Pick any name and paste it here'
+      );
+      if (topic && topic.trim()) {
+        await fetch('/api/ntfy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic: topic.trim() }),
+        });
+        updateNtfyButton(btn, true);
+      }
+    }
+  };
+}
+
+function updateNtfyButton(btn, enabled) {
+  btn.style.opacity = enabled ? '0.9' : '0.3';
+  btn.title = enabled ? 'Watch notifications: ON' : 'Watch notifications: OFF';
 }
 
 // Register service worker
