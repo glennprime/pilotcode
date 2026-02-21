@@ -1,9 +1,5 @@
-/* ═══════════════════════════════════════════════════
-   Easter Egg: Northrop Grumman vs UFO
-   Mobile-first responsive animation
-   ═══════════════════════════════════════════════════ */
+/* Easter Egg: Northrop Grumman vs UFO */
 
-/* Hidden trigger — diamond icon on no-session screen */
 #ee-trigger {
   cursor: default;
   -webkit-tap-highlight-color: transparent;
@@ -19,124 +15,46 @@
   overflow: hidden;
 }
 
-/* ── Sprite scaling ── */
-:root {
-  --ee-scale: clamp(0.75, 0.12vw + 0.55, 1);
-}
-
-/* ── Flight path wrappers ── */
-.ee-mover {
+.ee-sprite {
   position: absolute;
-  will-change: transform;
+  will-change: left;
 }
 
-/* ═══ Saucer ═══ */
-.ee-saucer {
-  position: relative;
-  width: calc(60px * var(--ee-scale));
-  height: calc(34px * var(--ee-scale));
-  animation: ee-wobble 0.4s ease-in-out infinite;
-}
-
-.ee-saucer-body {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  height: 65%;
-  background: radial-gradient(ellipse at center, #d0d8e0 0%, #8a9aaa 40%, #5a6a7a 100%);
-  border-radius: 50%;
-  box-shadow:
-    0 0 8px 3px rgba(0, 255, 200, 0.4),
-    0 0 20px 6px rgba(0, 255, 200, 0.15);
-  animation: ee-glow-pulse 0.6s ease-in-out infinite alternate;
-}
-
-.ee-saucer-dome {
-  position: absolute;
-  top: -2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 40%;
-  height: 55%;
-  background: radial-gradient(ellipse at center bottom, rgba(200, 255, 250, 0.95), rgba(100, 230, 210, 0.6));
-  border-radius: 50% 50% 35% 35%;
-  border: 1px solid rgba(150, 255, 230, 0.3);
-}
-
-@keyframes ee-glow-pulse {
-  from { box-shadow: 0 0 8px 3px rgba(0, 255, 200, 0.4), 0 0 20px 6px rgba(0, 255, 200, 0.15); }
-  to   { box-shadow: 0 0 12px 5px rgba(0, 255, 200, 0.5), 0 0 25px 8px rgba(0, 255, 200, 0.25); }
-}
-
-@keyframes ee-wobble {
-  0%, 100% { transform: rotate(-3deg) translateY(0); }
-  50%      { transform: rotate(3deg) translateY(-4px); }
-}
-
-/* ═══ Jet (SVG-based) ═══ */
-.ee-jet {
-  position: relative;
-  width: calc(100px * var(--ee-scale));
-  height: calc(50px * var(--ee-scale));
-}
-
-.ee-jet svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  filter: drop-shadow(1px 2px 4px rgba(0,0,0,0.5));
-}
-
+/* Jet label */
 .ee-jet-label {
   position: absolute;
-  bottom: calc(-4px * var(--ee-scale));
+  bottom: -14px;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
-  font-family: 'Arial Narrow', Arial, sans-serif;
-  font-size: clamp(6px, 1.2vw + 4px, 10px);
-  font-weight: bold;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
   color: #fff;
-  text-shadow: 0 0 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.8);
-  letter-spacing: clamp(0.5px, 0.2vw, 1.5px);
-  text-transform: uppercase;
+  text-shadow: 0 0 6px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,0.9);
+  letter-spacing: 1.5px;
 }
 
-/* ═══ Projectiles ═══ */
+/* Projectiles */
 .ee-projectile {
   position: absolute;
-  width: clamp(4px, 1vw, 8px);
-  height: clamp(4px, 1vw, 8px);
-  background: radial-gradient(circle, #ffaa33 0%, #ff6600 80%);
+  width: 5px;
+  height: 3px;
+  background: #ff8800;
   border-radius: 50%;
-  box-shadow: 0 0 6px 2px rgba(255, 140, 0, 0.7);
-  animation: ee-projectile-fly 0.35s linear forwards;
+  box-shadow: 0 0 6px 3px rgba(255, 140, 0, 0.6), -8px 0 12px 2px rgba(255, 100, 0, 0.3);
 }
 
-@keyframes ee-projectile-fly {
-  0%   { opacity: 1; transform: translateX(0); }
-  80%  { opacity: 1; }
-  100% { opacity: 0; transform: translateX(clamp(80px, 25vw, 300px)); }
-}
-
-/* ═══ Laser ═══ */
+/* Laser */
 .ee-laser {
   position: absolute;
-  height: clamp(3px, 0.6vw, 5px);
-  background: linear-gradient(90deg, rgba(0, 255, 100, 0.95), rgba(0, 255, 200, 0.7));
-  box-shadow: 0 0 10px 4px rgba(0, 255, 150, 0.5), 0 0 20px 8px rgba(0, 255, 150, 0.2);
+  height: 4px;
+  background: linear-gradient(90deg, rgba(0, 255, 120, 0.9), rgba(0, 255, 200, 0.7));
+  box-shadow: 0 0 8px 3px rgba(0, 255, 150, 0.5), 0 0 16px 6px rgba(0, 255, 150, 0.2);
   border-radius: 2px;
-  animation: ee-laser-flash 0.3s ease-out forwards;
 }
 
-@keyframes ee-laser-flash {
-  0%   { opacity: 0; }
-  15%  { opacity: 1; }
-  85%  { opacity: 1; }
-  100% { opacity: 0.6; }
-}
-
-/* ═══ Explosion ═══ */
+/* Explosion */
 .ee-explosion {
   position: absolute;
   width: 10px;
@@ -146,92 +64,63 @@
   animation: ee-explode 0.8s ease-out forwards;
 }
 
-@keyframes ee-explode {
-  0%   { transform: scale(1); opacity: 1; }
-  50%  { transform: scale(clamp(4, 1vw + 3, 8)); opacity: 0.8; }
-  100% { transform: scale(clamp(6, 2vw + 4, 12)); opacity: 0; }
+.ee-explosion-green {
+  background: radial-gradient(circle, #fff 0%, #aaffcc 20%, #00ff88 50%, #009944 75%, transparent 100%);
+  animation: ee-explode 1s ease-out forwards;
 }
 
-/* ═══ Missile (Phase 3) ═══ */
+@keyframes ee-explode {
+  0%   { transform: scale(1); opacity: 1; }
+  50%  { transform: scale(6); opacity: 0.8; }
+  100% { transform: scale(9); opacity: 0; }
+}
+
+/* Missile */
 .ee-missile {
   position: absolute;
   width: 8px;
-  height: 30px;
+  height: 28px;
   background: linear-gradient(180deg, #cc3333 0%, #888 30%, #666 100%);
   border-radius: 4px 4px 1px 1px;
-  box-shadow: 0 0 6px 2px rgba(255, 100, 50, 0.4);
-}
-
-.ee-missile::before {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: -4px;
-  width: 16px;
-  height: 6px;
-  background: #555;
-  clip-path: polygon(0% 100%, 50% 0%, 100% 100%);
 }
 
 .ee-missile::after {
   content: '';
   position: absolute;
-  bottom: -10px;
+  bottom: -8px;
   left: 50%;
   transform: translateX(-50%);
   width: 6px;
-  height: 12px;
+  height: 10px;
   background: radial-gradient(ellipse at center top, #ff8800, #ff4400, transparent);
   border-radius: 0 0 50% 50%;
-  animation: ee-engine-flicker 0.1s ease-in-out infinite alternate;
-}
-
-@keyframes ee-engine-flicker {
-  from { opacity: 0.7; transform: translateX(-50%) scaleY(0.8); }
-  to   { opacity: 1; transform: translateX(-50%) scaleY(1.3); }
-}
-
-.ee-missile-trail {
-  position: absolute;
-  bottom: -20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 40px;
-  background: linear-gradient(180deg, rgba(200, 200, 200, 0.5), transparent);
-  border-radius: 2px;
 }
 
 .ee-missile-label {
   position: absolute;
   top: 50%;
-  left: 16px;
+  left: 14px;
   transform: translateY(-50%);
   white-space: nowrap;
-  font-family: 'Arial Narrow', Arial, sans-serif;
-  font-size: clamp(7px, 1vw + 5px, 9px);
-  font-weight: bold;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 700;
   color: #fff;
   text-shadow: 0 0 4px rgba(0,0,0,1);
   letter-spacing: 1px;
 }
 
-.ee-explosion-green {
-  background: radial-gradient(circle, #fff 0%, #aaffcc 20%, #00ff88 50%, #009944 75%, transparent 100%);
-  animation: ee-explode 1.2s ease-out forwards;
-}
-
-/* "LOCKHEED MARTIN" victory text */
+/* Victory text */
 .ee-win-text {
   position: absolute;
-  top: 30%;
+  top: 35%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-family: 'Arial Narrow', Arial, sans-serif;
-  font-size: clamp(14px, 3vw + 6px, 22px);
-  font-weight: bold;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 800;
   color: #fff;
-  letter-spacing: clamp(1px, 0.5vw, 3px);
+  letter-spacing: 2px;
   text-shadow: 0 0 10px rgba(255, 100, 50, 0.8), 0 0 20px rgba(255, 100, 50, 0.4);
   animation: ee-text-flash 2s ease-out forwards;
 }
