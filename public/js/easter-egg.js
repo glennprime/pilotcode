@@ -33,7 +33,7 @@ function runEasterEgg() {
 // ────────────────────────────────────────────────
 function runPhase1(overlay) {
   const W = window.innerWidth;
-  const gap = Math.max(W * 0.5, 200);
+  const gap = 200; // constant gap between UFO (leader) and jet (chaser)
 
   const ufo = createUFO();
   const jet = createJet('right');
@@ -47,21 +47,16 @@ function runPhase1(overlay) {
   const shotTimes = [0.2, 0.35, 0.5, 0.65, 0.8];
   const shotsFired = new Set();
 
-  // Both fly fully offscreen-left to fully offscreen-right
-  // UFO leads, jet trails behind by `gap` at the start
-  // but both exit past the right edge
-  const ufoStart = -100;
-  const ufoEnd = W + 100;
-  const jetStart = ufoStart - gap;
-  const jetEnd = W + 350; // jet must also fly fully off right edge
+  // L→R: UFO leads, jet follows. Same speed. Constant gap.
+  // Start far enough left that jet is offscreen. End far enough right that jet exits.
+  const startX = -gap - 350; // jet starts here, UFO starts at startX + gap
+  const endX = W + 350;      // jet ends here, UFO ends at endX + gap
 
   return anim(4500, (t) => {
-    const ufoX = lerp(ufoStart, ufoEnd, t);
-    const jetX = lerp(jetStart, jetEnd, t);
-    ufo.style.left = ufoX + 'px';
+    const jetX = lerp(startX, endX, t);
+    const ufoX = jetX + gap;
     jet.style.left = jetX + 'px';
-
-    // wobble the ufo
+    ufo.style.left = ufoX + 'px';
     ufo.style.top = `calc(35% + ${Math.sin(t * 20) * 3}px)`;
 
     // fire shots from jet nose
@@ -69,6 +64,7 @@ function runPhase1(overlay) {
       if (t >= st && !shotsFired.has(st)) {
         shotsFired.add(st);
         const jetRect = jet.getBoundingClientRect();
+        if (jetRect.right < 0) continue;
         const p = document.createElement('div');
         p.className = 'ee-projectile';
         p.style.top = (jetRect.top + jetRect.height * 0.4) + 'px';
@@ -78,12 +74,10 @@ function runPhase1(overlay) {
       }
     }
 
-    // move projectiles forward fast
     for (const proj of projectiles) {
       const age = t - proj.startT;
-      const px = proj.startX + age * W * 3;
-      proj.el.style.left = px + 'px';
-      if (age > 0.1) { proj.el.style.opacity = '0'; }
+      proj.el.style.left = (proj.startX + age * W * 3) + 'px';
+      if (age > 0.1) proj.el.style.opacity = '0';
     }
   }).then(() => {
     ufo.remove();
@@ -93,11 +87,12 @@ function runPhase1(overlay) {
 }
 
 // ────────────────────────────────────────────────
-// Phase 2: Both fly right→left, UFO overtakes jet, laser, explosion
-// Jet keeps flying (planes don't stop!), UFO catches up
+// Phase 2: R→L. Jet leads (fleeing), UFO follows (chasing).
+// Same speed, same gap. UFO fires laser, jet explodes.
 // ────────────────────────────────────────────────
 function runPhase2(overlay) {
   const W = window.innerWidth;
+  const gap = 200;
 
   const jet = createJet('left');
   const ufo = createUFO();
@@ -109,55 +104,40 @@ function runPhase2(overlay) {
 
   let laserFired = false;
   let exploded = false;
-
-  // store for phase 3
   overlay._ufo = ufo;
 
-  // Both fly right-to-left.
-  // Jet is AHEAD (fleeing), UFO is BEHIND (chasing).
-  // UFO closes the gap but never passes the jet.
-  // At t=0.45 UFO is right behind → fires laser → jet explodes.
-  // Then UFO slows to hover at center for phase 3.
-
-  const jetSpeed = W + 400; // total distance jet covers
-  const jetStart = W + 350; // jet enters from far right (it's ahead)
-
-  const ufoGapStart = 250; // UFO starts 250px behind jet
-  const ufoGapAtFire = 80; // gap closes to 80px at laser time
+  // R→L: Jet leads (further left), UFO follows behind (further right).
+  // Start far enough right that UFO is offscreen. End far enough left that jet exits.
+  const startX = W + gap + 100; // UFO starts here, jet starts at startX - gap
+  const endX = -350;
 
   return anim(4500, (t) => {
-    // Jet: constant speed R→L the whole time
-    const jetX = jetStart - jetSpeed * t;
-    jet.style.left = jetX + 'px';
-
-    if (t <= 0.52) {
-      // UFO: starts behind jet, gap shrinks from 250 to 80
-      const gap = lerp(ufoGapStart, ufoGapAtFire, t / 0.52);
-      const ufoX = jetX + gap;
+    if (!exploded) {
+      // Both fly at same speed, constant gap
+      const ufoX = lerp(startX, endX, t);
+      const jetX = ufoX - gap;
       ufo.style.left = ufoX + 'px';
+      jet.style.left = jetX + 'px';
     }
     ufo.style.top = `calc(35% + ${Math.sin(t * 20) * 3}px)`;
 
-    // Fire laser at t=0.45 — UFO is close behind
-    if (t >= 0.45 && !laserFired) {
+    // Fire laser at t=0.4
+    if (t >= 0.4 && !laserFired) {
       laserFired = true;
-      const laser = document.createElement('div');
-      laser.className = 'ee-laser';
       const ufoRect = ufo.getBoundingClientRect();
       const jetRect = jet.getBoundingClientRect();
-      const y = ufoRect.top + ufoRect.height / 2;
-      // Laser goes from UFO's left edge to jet's center
-      const laserRight = ufoRect.left;
-      const laserLeft = jetRect.left + jetRect.width * 0.3;
-      laser.style.top = y + 'px';
-      laser.style.left = Math.min(laserLeft, laserRight) + 'px';
-      laser.style.width = Math.abs(laserRight - laserLeft) + 'px';
+      const laser = document.createElement('div');
+      laser.className = 'ee-laser';
+      laser.style.top = (ufoRect.top + ufoRect.height / 2) + 'px';
+      // laser from UFO left edge to jet right edge
+      laser.style.left = (jetRect.left + jetRect.width * 0.5) + 'px';
+      laser.style.width = (ufoRect.left - jetRect.left - jetRect.width * 0.5) + 'px';
       overlay.appendChild(laser);
       setTimeout(() => laser.remove(), 300);
     }
 
-    // Explode jet at t=0.52
-    if (t >= 0.52 && !exploded) {
+    // Explode jet at t=0.47
+    if (t >= 0.47 && !exploded) {
       exploded = true;
       const jetRect = jet.getBoundingClientRect();
       const boom = document.createElement('div');
@@ -169,17 +149,14 @@ function runPhase2(overlay) {
       setTimeout(() => boom.remove(), 800);
     }
 
-    // After explosion, UFO decelerates to hover at center for phase 3
-    if (t > 0.52) {
-      const hoverT = Math.min((t - 0.52) / 0.4, 1);
-      const eased = 1 - Math.pow(1 - hoverT, 3);
-      const currentUfoX = parseFloat(ufo.style.left) || W * 0.5;
+    // After explosion, UFO decelerates to hover at center
+    if (exploded) {
       const hoverTarget = W * 0.45;
-      ufo.style.left = lerp(currentUfoX, hoverTarget, eased) + 'px';
+      const currentX = parseFloat(ufo.style.left) || hoverTarget;
+      ufo.style.left = lerp(currentX, hoverTarget, 0.03) + 'px';
     }
   }).then(() => {
     jet.remove();
-    // ufo stays for phase 3
   });
 }
 
