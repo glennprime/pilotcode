@@ -21,7 +21,7 @@
 
 /* ── Sprite scaling ── */
 :root {
-  --ee-scale: clamp(0.5, 0.12vw + 0.45, 1);
+  --ee-scale: clamp(0.75, 0.12vw + 0.55, 1);
 }
 
 /* ── Flight path wrappers ── */
@@ -43,28 +43,29 @@
   bottom: 0;
   width: 100%;
   height: 65%;
-  background: radial-gradient(ellipse at center, #c0c8d0 0%, #7a8a9a 50%, #4a5a6a 100%);
+  background: radial-gradient(ellipse at center, #d0d8e0 0%, #8a9aaa 40%, #5a6a7a 100%);
   border-radius: 50%;
   box-shadow:
-    0 0 calc(18px * var(--ee-scale)) calc(6px * var(--ee-scale)) rgba(0, 255, 200, 0.5),
-    0 0 calc(40px * var(--ee-scale)) calc(12px * var(--ee-scale)) rgba(0, 255, 200, 0.2);
+    0 0 8px 3px rgba(0, 255, 200, 0.4),
+    0 0 20px 6px rgba(0, 255, 200, 0.15);
   animation: ee-glow-pulse 0.6s ease-in-out infinite alternate;
 }
 
 .ee-saucer-dome {
   position: absolute;
-  top: 0;
+  top: -2px;
   left: 50%;
   transform: translateX(-50%);
-  width: 37%;
-  height: 47%;
-  background: radial-gradient(ellipse at center bottom, rgba(180, 255, 240, 0.9), rgba(80, 220, 200, 0.4));
-  border-radius: 50% 50% 40% 40%;
+  width: 40%;
+  height: 55%;
+  background: radial-gradient(ellipse at center bottom, rgba(200, 255, 250, 0.95), rgba(100, 230, 210, 0.6));
+  border-radius: 50% 50% 35% 35%;
+  border: 1px solid rgba(150, 255, 230, 0.3);
 }
 
 @keyframes ee-glow-pulse {
-  from { box-shadow: 0 0 18px 6px rgba(0, 255, 200, 0.5), 0 0 40px 12px rgba(0, 255, 200, 0.2); }
-  to   { box-shadow: 0 0 24px 10px rgba(0, 255, 200, 0.7), 0 0 50px 18px rgba(0, 255, 200, 0.35); }
+  from { box-shadow: 0 0 8px 3px rgba(0, 255, 200, 0.4), 0 0 20px 6px rgba(0, 255, 200, 0.15); }
+  to   { box-shadow: 0 0 12px 5px rgba(0, 255, 200, 0.5), 0 0 25px 8px rgba(0, 255, 200, 0.25); }
 }
 
 @keyframes ee-wobble {
