@@ -215,37 +215,16 @@ function runPhase3(overlay) {
 function createUFO() {
   const wrap = document.createElement('div');
   wrap.className = 'ee-sprite';
-  wrap.style.width = '64px';
-  wrap.style.height = '40px';
-  wrap.innerHTML = `<svg viewBox="0 0 100 65" width="64" height="40" style="overflow:visible">
-    <defs>
-      <filter id="ufo-glow">
-        <feGaussianBlur stdDeviation="2.5" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>
-    <!-- dome -->
-    <ellipse cx="50" cy="24" rx="16" ry="14" fill="#99ddcc" opacity="0.8"/>
-    <ellipse cx="50" cy="24" rx="12" ry="10" fill="#bbffee" opacity="0.5"/>
-    <!-- body disc -->
-    <ellipse cx="50" cy="35" rx="44" ry="13" fill="#667788" filter="url(#ufo-glow)"/>
-    <ellipse cx="50" cy="33" rx="38" ry="9" fill="#8899aa"/>
-    <!-- rim lights -->
-    <circle cx="18" cy="37" r="3" fill="#00ffcc" opacity="0.9">
-      <animate attributeName="opacity" values="1;0.3;1" dur="0.6s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="38" cy="41" r="2.5" fill="#00ffcc" opacity="0.7">
-      <animate attributeName="opacity" values="0.3;1;0.3" dur="0.6s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="62" cy="41" r="2.5" fill="#00ffcc" opacity="0.7">
-      <animate attributeName="opacity" values="0.8;0.2;0.8" dur="0.6s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="82" cy="37" r="3" fill="#00ffcc" opacity="0.9">
-      <animate attributeName="opacity" values="0.3;1;0.3" dur="0.6s" repeatCount="indefinite"/>
-    </circle>
-    <!-- bottom beam hint -->
-    <ellipse cx="50" cy="44" rx="18" ry="4" fill="#00ffaa" opacity="0.2"/>
-  </svg>`;
+  wrap.style.width = '80px';
+  wrap.style.height = '48px';
+  const img = document.createElement('img');
+  img.src = '/img/ufo.png';
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = 'contain';
+  img.style.filter = 'drop-shadow(0 0 8px rgba(0, 150, 255, 0.5))';
+  img.draggable = false;
+  wrap.appendChild(img);
   return wrap;
 }
 
