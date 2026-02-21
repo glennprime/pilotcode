@@ -8,19 +8,26 @@
   overflow: hidden;
 }
 
-/* === Saucer === */
-.ee-saucer {
+/* === Flight path wrappers (these get the translateX animation) === */
+.ee-mover {
   position: absolute;
-  top: 18%;
-  width: 60px;
-  height: 24px;
   will-change: transform;
 }
 
-.ee-saucer-body {
+/* === Saucer === */
+.ee-saucer {
+  position: relative;
   width: 60px;
-  height: 24px;
-  background: radial-gradient(ellipse at center, #b0b8c0 0%, #6a7a8a 60%, #3a4a5a 100%);
+  height: 34px;
+  animation: ee-wobble 0.4s ease-in-out infinite;
+}
+
+.ee-saucer-body {
+  position: absolute;
+  bottom: 0;
+  width: 60px;
+  height: 22px;
+  background: radial-gradient(ellipse at center, #c0c8d0 0%, #7a8a9a 50%, #4a5a6a 100%);
   border-radius: 50%;
   box-shadow: 0 0 18px 6px rgba(0, 255, 200, 0.5), 0 0 40px 12px rgba(0, 255, 200, 0.2);
   animation: ee-glow-pulse 0.6s ease-in-out infinite alternate;
@@ -28,12 +35,12 @@
 
 .ee-saucer-dome {
   position: absolute;
-  top: -10px;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 24px;
-  height: 14px;
-  background: radial-gradient(ellipse at center bottom, rgba(180, 255, 240, 0.9), rgba(100, 220, 200, 0.5));
+  width: 22px;
+  height: 16px;
+  background: radial-gradient(ellipse at center bottom, rgba(180, 255, 240, 0.9), rgba(80, 220, 200, 0.4));
   border-radius: 50% 50% 40% 40%;
 }
 
@@ -47,48 +54,80 @@
   50%      { transform: rotate(3deg) translateY(-4px); }
 }
 
-/* === Jet (B-2 silhouette) === */
+/* === Jet (fighter silhouette using clip-path) === */
 .ee-jet {
-  position: absolute;
-  top: 22%;
-  width: 56px;
-  height: 28px;
-  will-change: transform;
+  position: relative;
+  width: 80px;
+  height: 50px;
 }
 
 .ee-jet-body {
-  width: 0;
-  height: 0;
-  border-left: 28px solid transparent;
-  border-right: 28px solid transparent;
-  border-bottom: 14px solid #2a2a30;
-  filter: drop-shadow(0 0 4px rgba(255, 150, 50, 0.3));
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 80px;
+  height: 36px;
+  background: linear-gradient(180deg, #3a3a42 0%, #1e1e24 100%);
+  clip-path: polygon(
+    100% 45%,
+    70% 40%,
+    55% 0%,
+    45% 0%,
+    30% 40%,
+    0% 30%,
+    0% 50%,
+    30% 48%,
+    35% 75%,
+    42% 100%,
+    58% 100%,
+    65% 75%,
+    70% 48%,
+    100% 55%
+  );
+  filter: drop-shadow(1px 2px 3px rgba(0,0,0,0.5));
 }
 
+/* engine glow */
 .ee-jet-body::after {
   content: '';
   position: absolute;
-  top: 6px;
-  left: -14px;
-  width: 28px;
+  left: -4px;
+  top: 38%;
+  width: 8px;
   height: 8px;
-  background: #2a2a30;
-  clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%);
+  background: radial-gradient(circle, #ff8800 0%, #ff4400 60%, transparent 100%);
+  border-radius: 50%;
+  animation: ee-engine-flicker 0.15s ease-in-out infinite alternate;
+}
+
+@keyframes ee-engine-flicker {
+  from { opacity: 0.7; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1.2); }
 }
 
 .ee-jet-label {
   position: absolute;
-  top: 18px;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
-  font-family: 'Courier New', monospace;
-  font-size: 6px;
+  font-family: 'Arial Narrow', Arial, sans-serif;
+  font-size: 9px;
   font-weight: bold;
   color: #fff;
-  text-shadow: 0 0 3px rgba(0,0,0,0.8);
-  letter-spacing: 0.5px;
+  text-shadow: 0 0 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.8);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* Flip jet to face left (for phase 2, fleeing right-to-left) */
+.ee-jet-flip {
+  transform: scaleX(-1);
+}
+
+/* Flip saucer to face left (for phase 2, chasing right-to-left) */
+.ee-saucer-flip {
+  transform: scaleX(-1);
 }
 
 /* === Projectiles === */
@@ -101,13 +140,18 @@
   box-shadow: 0 0 6px 2px rgba(255, 140, 0, 0.7);
 }
 
+@keyframes ee-projectile-fly {
+  0%   { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(120px); }
+}
+
 /* === Laser === */
 .ee-laser {
   position: absolute;
-  height: 3px;
-  background: linear-gradient(90deg, rgba(0, 255, 100, 0.9), rgba(0, 255, 200, 0.6));
-  box-shadow: 0 0 8px 3px rgba(0, 255, 150, 0.5);
-  transform-origin: right center;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(0, 255, 100, 0.95), rgba(0, 255, 200, 0.7));
+  box-shadow: 0 0 10px 4px rgba(0, 255, 150, 0.5), 0 0 20px 8px rgba(0, 255, 150, 0.2);
+  border-radius: 2px;
 }
 
 /* === Explosion === */
@@ -126,32 +170,24 @@
   100% { transform: scale(12); opacity: 0; }
 }
 
-/* === Phase 1: Chase (left to right) === */
-@keyframes ee-fly-right-saucer {
-  0%   { transform: translateX(-80px); }
-  100% { transform: translateX(calc(100vw + 80px)); }
+/* === Flight path keyframes === */
+@keyframes ee-fly-right {
+  0%   { transform: translateX(-100px); }
+  100% { transform: translateX(calc(100vw + 100px)); }
 }
 
-@keyframes ee-fly-right-jet {
-  0%   { transform: translateX(-200px); }
-  100% { transform: translateX(calc(100vw + 80px)); }
+@keyframes ee-fly-right-trail {
+  0%   { transform: translateX(-220px); }
+  100% { transform: translateX(calc(100vw + 100px)); }
 }
 
-/* === Phase 2: Revenge (right to left) === */
-@keyframes ee-fly-left-saucer {
-  0%   { transform: translateX(calc(100vw + 80px)); }
-  100% { transform: translateX(-80px); }
+@keyframes ee-fly-left {
+  0%   { transform: translateX(calc(100vw + 100px)); }
+  100% { transform: translateX(-100px); }
 }
 
 @keyframes ee-fly-left-jet {
-  0%   { transform: translateX(calc(100vw + 80px)); }
-  40%  { transform: translateX(45vw); }
-  /* jet stops here — gets hit */
-  100% { transform: translateX(45vw); }
-}
-
-/* === Projectile flight (phase 1, left to right) === */
-@keyframes ee-projectile-fly {
-  0%   { opacity: 1; transform: translateX(0); }
-  100% { opacity: 0; transform: translateX(120px); }
+  0%   { transform: translateX(calc(100vw + 100px)); }
+  35%  { transform: translateX(40vw); }
+  100% { transform: translateX(40vw); }
 }
