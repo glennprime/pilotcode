@@ -310,6 +310,18 @@ function handleMessage(msg) {
       showNoSessionPrompt();
       break;
 
+    case 'session_context_full': {
+      const fullName = msg.name || 'Session';
+      const fullCwd = msg.cwd || undefined;
+      const fullModel = msg.model || undefined;
+      chat.addSystemMessage('Session context is full. Starting a fresh session...');
+      // Auto-create a new session with the same name, cwd, and model
+      sessionUI.currentSessionId = '__creating__';
+      sessionGreeted = true; // don't auto-greet — user will continue manually
+      wsClient.send({ type: 'create_session', name: fullName, cwd: fullCwd, model: fullModel });
+      break;
+    }
+
     // Fresh start fallback — resume couldn't find a valid session
     case 'session_fresh_start':
       chat.addSystemMessage(msg.message || 'Previous session not found. Started a new session.');

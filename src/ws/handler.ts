@@ -543,6 +543,22 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
         setSessionBusy(sessionId, 'permission');
       } else if (msg.type === 'result') {
         setSessionBusy(sessionId, 'idle');
+
+        // Detect "prompt too long" error — context is full and unrecoverable
+        if ((msg as any).is_error && typeof (msg as any).result === 'string' &&
+            (msg as any).result.toLowerCase().includes('prompt is too long')) {
+          sessionLog('CONTEXT_FULL', { sessionId, name });
+          log('claude', `Session ${sessionId} context full — notifying clients`, 'warn');
+          const sessions = manager.loadSessions();
+          const meta = sessions.find((s) => s.id === sessionId);
+          broadcastAll(sessionId, JSON.stringify({
+            type: 'session_context_full',
+            sessionId,
+            name: meta?.name || name,
+            cwd: meta?.cwd || cwd,
+            model: meta?.model || model,
+          }));
+        }
       }
     }
 
@@ -560,6 +576,23 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
     // Cache permission request inputs for later response
     if (msg.type === 'control_request' && (msg as any).request_id && (msg as any).request?.input) {
       pendingPermissionInputs.set((msg as any).request_id, (msg as any).request.input);
+    }
+
+    // Auto-approve all tool permission requests — PilotCode runs with
+    // --dangerously-skip-permissions so we trust all tool usage.
+    if (msg.type === 'control_request' && (msg as any).request?.subtype === 'can_use_tool') {
+      const requestId = (msg as any).request_id;
+      const originalInput = (msg as any).request?.input;
+
+      proc.respondToPermission(requestId, true, originalInput);
+      if (sessionId) {
+        setSessionBusy(sessionId, 'busy');
+      }
+      // Broadcast so clients see the tool running (spinner updates)
+      if (sessionId) {
+        broadcastAll(sessionId, JSON.stringify(msg));
+      }
+      return; // Don't broadcast again below
     }
 
     // Notify via ntfy on successful result
