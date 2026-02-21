@@ -22,7 +22,11 @@ function runEasterEgg() {
 
   phase1(overlay, () => {
     setTimeout(() => {
-      phase2(overlay, () => overlay.remove());
+      phase2(overlay, () => {
+        setTimeout(() => {
+          phase3(overlay, () => overlay.remove());
+        }, 1500);
+      });
     }, 2000);
   });
 }
@@ -69,7 +73,7 @@ function phase1(overlay, onDone) {
   }, dur);
 }
 
-/* ── Phase 2: Saucer chases jet R→L, laser, explosion ── */
+/* ── Phase 2: Saucer chases jet R→L, laser, explosion, saucer hovers ── */
 function phase2(overlay, onDone) {
   const dur = 3500;
 
@@ -81,12 +85,18 @@ function phase2(overlay, onDone) {
   jetMover.appendChild(jetEl);
   overlay.appendChild(jetMover);
 
+  // Saucer: flies in from right, stops at center to hover victoriously
   const saucerMover = document.createElement('div');
   saucerMover.className = 'ee-mover';
   saucerMover.style.top = '15%';
-  saucerMover.style.animation = `ee-fly-left ${dur}ms linear forwards`;
-  saucerMover.appendChild(makeSaucer());
+  saucerMover.style.animation = `ee-fly-left-stop ${dur}ms ease-out forwards`;
+  const saucerEl = makeSaucer();
+  saucerMover.appendChild(saucerEl);
   overlay.appendChild(saucerMover);
+
+  // Store saucer ref on overlay so phase3 can target it
+  overlay._saucerMover = saucerMover;
+  overlay._saucerEl = saucerEl;
 
   const hitTime = dur * 0.35;
   setTimeout(() => {
@@ -94,7 +104,8 @@ function phase2(overlay, onDone) {
 
     const jetCenterX = window.innerWidth * 0.40 + 50;
     const saucerFrac = hitTime / dur;
-    const saucerX = (window.innerWidth + 100) - saucerFrac * (window.innerWidth + 200);
+    // Saucer stops at 50vw, but at hitTime it's still approaching
+    const saucerX = (window.innerWidth + 100) - saucerFrac * (window.innerWidth + 100 - window.innerWidth * 0.5);
 
     const laser = document.createElement('div');
     laser.className = 'ee-laser';
@@ -116,10 +127,71 @@ function phase2(overlay, onDone) {
   }, hitTime);
 
   setTimeout(() => {
-    saucerMover.remove();
     jetMover.remove();
+    // saucerMover stays — phase3 will clean it up
     onDone();
   }, dur + 800);
+}
+
+/* ── Phase 3: Lockheed Martin missile from below takes out the saucer ── */
+function phase3(overlay, onDone) {
+  const dur = 1500;
+
+  // Saucer is hovering at ~50vw, 15% top from phase 2
+  const saucerMover = overlay._saucerMover;
+  const saucerEl = overlay._saucerEl;
+  const saucerCenterX = window.innerWidth * 0.50 + 30;
+  const saucerTopPx = window.innerHeight * 0.15 + 16;
+
+  // Missile rises from bottom toward saucer
+  const missile = document.createElement('div');
+  missile.className = 'ee-missile';
+  missile.style.left = `${saucerCenterX - 4}px`;
+  missile.style.bottom = '-40px';
+  missile.style.animation = `ee-missile-rise ${dur}ms ease-in forwards`;
+  // Set the target top as a CSS variable so the keyframe can use it
+  missile.style.setProperty('--target-top', `${saucerTopPx}px`);
+
+  // Smoke trail
+  const trail = document.createElement('div');
+  trail.className = 'ee-missile-trail';
+  missile.appendChild(trail);
+
+  // Label
+  const label = document.createElement('div');
+  label.className = 'ee-missile-label';
+  label.textContent = 'LOCKHEED MARTIN';
+  missile.appendChild(label);
+
+  overlay.appendChild(missile);
+
+  // At impact
+  setTimeout(() => {
+    if (!overlay.isConnected) return;
+    missile.remove();
+
+    // Green-tinted explosion for the saucer
+    const boom = document.createElement('div');
+    boom.className = 'ee-explosion ee-explosion-green';
+    boom.style.top = `${saucerTopPx - 5}px`;
+    boom.style.left = `${saucerCenterX - 5}px`;
+    overlay.appendChild(boom);
+
+    if (saucerEl) saucerEl.style.visibility = 'hidden';
+
+    // Flash "LOCKHEED MARTIN" text on screen
+    const winText = document.createElement('div');
+    winText.className = 'ee-win-text';
+    winText.textContent = 'LOCKHEED MARTIN';
+    overlay.appendChild(winText);
+
+    setTimeout(() => {
+      boom.remove();
+      winText.remove();
+      if (saucerMover) saucerMover.remove();
+      onDone();
+    }, 2000);
+  }, dur);
 }
 
 /* ── Sprite builders ── */
