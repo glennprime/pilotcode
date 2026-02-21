@@ -174,9 +174,9 @@ function runPhase3(overlay) {
 
   const missile = document.createElement('div');
   missile.className = 'ee-sprite';
-  missile.style.width = '60px';
-  missile.style.height = '180px';
-  missile.style.left = (targetX - 30) + 'px';
+  missile.style.width = '180px';
+  missile.style.height = '540px';
+  missile.style.left = (targetX - 90) + 'px';
   const missileImg = document.createElement('img');
   missileImg.src = '/img/missile.png';
   missileImg.style.width = '100%';
@@ -186,7 +186,7 @@ function runPhase3(overlay) {
   missile.appendChild(missileImg);
   overlay.appendChild(missile);
 
-  return anim(1200, (t) => {
+  return anim(12000, (t) => {
     const eased = t * t; // ease-in
     const y = H + 40 + (targetY - H - 40) * eased;
     missile.style.top = y + 'px';
