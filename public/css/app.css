@@ -159,6 +159,14 @@ html, body {
 #ding-toggle.ding-off {
   opacity: 0.3;
 }
+#push-toggle {
+  font-size: 16px;
+  opacity: 0.9;
+  transition: opacity 0.2s;
+}
+#push-toggle.push-off {
+  opacity: 0.3;
+}
 
 .header-btn {
   background: none;

@@ -3,7 +3,7 @@ import multer from 'multer';
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
-import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD } from '../config.js';
+import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
 import { requireAuth } from './auth.js';
 
@@ -134,6 +134,17 @@ export function createApiRouter(manager: SessionManager): Router {
       { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', tier: 'standard' },
       { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', tier: 'fast' },
     ]);
+  });
+
+  // Ntfy configuration
+  router.get('/api/ntfy', requireAuth, (_req: Request, res: Response) => {
+    res.json({ topic: getNtfyTopic() });
+  });
+
+  router.post('/api/ntfy', requireAuth, (req: Request, res: Response) => {
+    const { topic } = req.body;
+    setNtfyTopic(topic || null);
+    res.json({ ok: true, topic: topic || null });
   });
 
   // Health

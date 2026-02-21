@@ -93,6 +93,7 @@ function showApp() {
   // Input handling
   setupInput();
   initDingToggle();
+  initNtfyToggle();
 }
 
 function setupInput() {
@@ -319,6 +320,62 @@ function playDing() {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.4);
   } catch {}
+}
+
+// Ntfy watch notifications
+async function initNtfyToggle() {
+  const btn = document.getElementById('push-toggle');
+  if (!btn) return;
+
+  // Check current state from server
+  try {
+    const res = await fetch('/api/ntfy');
+    const data = await res.json();
+    btn.style.display = 'inline-block';
+    updateNtfyButton(btn, !!data.topic);
+  } catch {
+    btn.style.display = 'inline-block';
+    updateNtfyButton(btn, false);
+  }
+
+  btn.onclick = async () => {
+    const res = await fetch('/api/ntfy');
+    const data = await res.json();
+
+    if (data.topic) {
+      // Disable — confirm first
+      if (confirm('Disable Apple Watch notifications?')) {
+        await fetch('/api/ntfy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic: null }),
+        });
+        updateNtfyButton(btn, false);
+      }
+    } else {
+      // Enable — ask for topic or generate one
+      const topic = prompt(
+        'Enter your ntfy topic (from the ntfy app on your phone).\n\n' +
+        'If you don\'t have one yet:\n' +
+        '1. Install "ntfy" from the App Store\n' +
+        '2. Tap + to subscribe to a topic\n' +
+        '3. Pick any name and paste it here'
+      );
+      if (topic && topic.trim()) {
+        await fetch('/api/ntfy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic: topic.trim() }),
+        });
+        updateNtfyButton(btn, true);
+      }
+    }
+  };
+}
+
+function updateNtfyButton(btn, enabled) {
+  btn.style.opacity = enabled ? '0.9' : '0.3';
+  btn.title = enabled ? 'Watch notifications: ON' : 'Watch notifications: OFF';
 }
 
 // Register service worker
