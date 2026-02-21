@@ -40,8 +40,8 @@ function runPhase1(overlay) {
   overlay.appendChild(ufo);
   overlay.appendChild(jet);
 
-  ufo.style.top = '40%';
-  jet.style.top = '38%';
+  ufo.style.top = '25%';
+  jet.style.top = '23%';
 
   const projectiles = [];
   const shotTimes = [0.2, 0.35, 0.5, 0.65, 0.8];
@@ -57,7 +57,7 @@ function runPhase1(overlay) {
     const ufoX = jetX + gap;
     jet.style.left = jetX + 'px';
     ufo.style.left = ufoX + 'px';
-    ufo.style.top = `calc(40% + ${Math.sin(t * 20) * 3}px)`;
+    ufo.style.top = `calc(25% + ${Math.sin(t * 20) * 3}px)`;
 
     // fire shots from jet nose
     for (const st of shotTimes) {
@@ -99,8 +99,8 @@ function runPhase2(overlay) {
   overlay.appendChild(jet);
   overlay.appendChild(ufo);
 
-  jet.style.top = '38%';
-  ufo.style.top = '40%';
+  jet.style.top = '23%';
+  ufo.style.top = '25%';
 
   let laserFired = false;
   let exploded = false;
@@ -119,7 +119,7 @@ function runPhase2(overlay) {
       ufo.style.left = ufoX + 'px';
       jet.style.left = jetX + 'px';
     }
-    ufo.style.top = `calc(40% + ${Math.sin(t * 20) * 3}px)`;
+    ufo.style.top = `calc(25% + ${Math.sin(t * 20) * 3}px)`;
 
     // Fire laser at t=0.4
     if (t >= 0.4 && !laserFired) {
@@ -186,9 +186,13 @@ function runPhase3(overlay) {
   missile.appendChild(missileImg);
   overlay.appendChild(missile);
 
+  // Missile tip is at the top of the element. Start with top just off-screen.
+  const startY = H;           // top of missile starts at bottom of viewport
+  const endY = targetY;       // tip (top edge) arrives at UFO center
+
   return anim(12000, (t) => {
-    const eased = t * t; // ease-in
-    const y = H + 40 + (targetY - H - 40) * eased;
+    const eased = t * t; // ease-in (slow start, accelerates)
+    const y = lerp(startY, endY, eased);
     missile.style.top = y + 'px';
   }).then(() => {
     missile.remove();
