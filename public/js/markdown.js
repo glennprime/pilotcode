@@ -27,30 +27,70 @@ export async function initMarkdown() {
   }
 
   if (window.marked) {
-    window.marked.setOptions({
-      highlight: (code, lang) => {
-        if (hlLoaded && window.hljs) {
-          try {
-            if (lang && window.hljs.getLanguage(lang)) {
-              return window.hljs.highlight(code, { language: lang }).value;
-            }
-            return window.hljs.highlightAuto(code).value;
-          } catch { /* fallback */ }
-        }
-        return code;
-      },
-      breaks: true,
-    });
+    try {
+      window.marked.setOptions({ breaks: true });
+    } catch {
+      // Fallback for older/newer marked versions
+    }
+
+    // Use marked-highlight extension pattern if available, otherwise
+    // highlight code blocks after rendering via addCopyButtons
+    if (hlLoaded && window.hljs) {
+      const renderer = new window.marked.Renderer();
+      renderer.code = function (text, lang) {
+        // marked v14 passes an object { text, lang } as first arg
+        if (typeof text === 'object') { lang = text.lang; text = text.text; }
+        let highlighted = text;
+        try {
+          if (lang && window.hljs.getLanguage(lang)) {
+            highlighted = window.hljs.highlight(text, { language: lang }).value;
+          } else {
+            highlighted = window.hljs.highlightAuto(text).value;
+          }
+        } catch { /* fallback to plain text */ }
+        return `<pre><code class="hljs${lang ? ` language-${lang}` : ''}">${highlighted}</code></pre>`;
+      };
+      try {
+        window.marked.setOptions({ renderer });
+      } catch {
+        // If setOptions with renderer fails, use marked.use()
+        try { window.marked.use({ renderer }); } catch { /* give up on highlighting */ }
+      }
+    }
   }
 }
 
 export function renderMarkdown(text) {
-  if (!markedLoaded || !window.marked) return escapeHtml(text);
+  if (!markedLoaded || !window.marked) return fallbackMarkdown(text);
   try {
     return window.marked.parse(text);
   } catch {
-    return escapeHtml(text);
+    return fallbackMarkdown(text);
   }
+}
+
+/** Minimal markdown renderer when marked CDN fails to load. */
+function fallbackMarkdown(text) {
+  let html = escapeHtml(text);
+  // Code blocks (``` ... ```)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // Unordered lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Line breaks
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  return `<p>${html}</p>`;
 }
 
 export function addCopyButtons(container) {

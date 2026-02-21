@@ -40,7 +40,10 @@ export class Chat {
     if (images?.length) {
       entry.images = images.map((i) => i.filename || null).filter(Boolean);
     }
-    this.pushHistory(entry);
+    this.history.push(entry);
+    // Save user messages immediately — don't debounce.
+    // If the user switches sessions quickly, debounced saves can be lost.
+    this.saveHistory();
   }
 
   addAssistantText(text) {
@@ -209,15 +212,17 @@ export class Chat {
       case 'process_exit':
         this.hideThinking();
         this.finishStreaming();
-        if (msg.code !== 0 && msg.code !== null) {
+        if (msg.error) {
+          this.addSystemMessage(msg.error);
+        } else if (msg.code !== 0 && msg.code !== null) {
           this.addSystemMessage('Session ended');
         }
         break;
 
       case 'error':
         this.hideThinking();
-        if (msg.error && !msg.error.includes('No active session')) {
-          this.addSystemMessage(`Error: ${msg.error}`);
+        if (msg.error) {
+          this.addSystemMessage(msg.error);
         }
         break;
 

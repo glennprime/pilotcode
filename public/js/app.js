@@ -234,6 +234,17 @@ function handleMessage(msg) {
 
     case 'session_crashed':
       chat.addSystemMessage(msg.error || 'Session crashed. Please resume manually.');
+      sessionUI.currentSessionId = null;
+      creatingSession = false;
+      break;
+
+    // Fresh start fallback — resume couldn't find a valid session
+    case 'session_fresh_start':
+      chat.addSystemMessage(msg.message || 'Previous session not found. Started a new session.');
+      break;
+
+    // Process exited normally — no action needed (resume handles failures gracefully)
+    case 'process_exit':
       break;
 
     // User message from another device

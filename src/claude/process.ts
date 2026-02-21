@@ -31,7 +31,9 @@ export class ClaudeProcess extends EventEmitter {
     const args = [
       '--output-format', 'stream-json',
       '--verbose',
-      '--input-format', 'stream-json', '--dangerously-skip-permissions',
+      '--input-format', 'stream-json',
+      '--dangerously-skip-permissions',
+      '--permission-mode', 'bypassPermissions',
     ];
 
     if (this.options.model) {
@@ -61,7 +63,10 @@ export class ClaudeProcess extends EventEmitter {
       debugLog(`[stdout] ${line.substring(0, 500)}`);
       try {
         const msg: SDKMessage = JSON.parse(line);
-        if (msg.type === 'system' && msg.session_id) {
+        if (msg.type === 'system' && msg.session_id && !this.sessionId) {
+          // Only set sessionId on the FIRST system message.
+          // Claude sends subsequent system messages with the original ID on resume,
+          // but our broadcast loop locks to the init alias. Keep them in sync.
           this.sessionId = msg.session_id;
         }
         this.emit('message', msg);
