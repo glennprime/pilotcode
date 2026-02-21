@@ -34,7 +34,7 @@ function runEasterEgg() {
 /* ── Phase 1: Saucer flees L→R, jet chases & fires ── */
 function phase1(overlay, onDone) {
   const dur = 4000;
-  const jetDelay = 600; // jet enters 600ms after saucer = constant gap
+  const jetDelay = 1200; // jet enters 1.2s after saucer = big visible gap
 
   const saucerMover = document.createElement('div');
   saucerMover.className = 'ee-mover';
