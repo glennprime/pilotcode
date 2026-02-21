@@ -1,4 +1,5 @@
 // Easter Egg: Northrop Grumman vs UFO aerial dogfight
+// Uses requestAnimationFrame for precise viewport-aware animation
 
 let eeTimer = null;
 let eeInitTimer = null;
@@ -27,179 +28,255 @@ function runEasterEgg() {
           phase3(overlay, () => overlay.remove());
         }, 1500);
       });
-    }, 2000);
+    }, 1500);
   });
 }
 
-/* ── Phase 1: Saucer flees L→R, jet chases & fires ── */
-function phase1(overlay, onDone) {
-  const dur = 4000;
-  const jetDelay = 1200; // jet enters 1.2s after saucer = big visible gap
+// ── Helper: animate with rAF ──
+// `tick(progress)` called each frame with 0→1 progress
+// Returns a promise that resolves when done
+function animate(durationMs, tick) {
+  return new Promise(resolve => {
+    const start = performance.now();
+    function frame(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / durationMs, 1);
+      tick(progress);
+      if (progress < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        resolve();
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
 
+// ── Viewport-aware measurements ──
+function vw() { return window.innerWidth; }
+function spriteGap() { return Math.max(vw() * 0.35, 100); } // gap between saucer & jet
+
+/* ═══════════════════════════════════════════════════
+   Phase 1: Saucer flees L→R, jet chases & fires
+   ═══════════════════════════════════════════════════ */
+async function phase1(overlay, onDone) {
   const saucerMover = document.createElement('div');
   saucerMover.className = 'ee-mover';
   saucerMover.style.top = '15%';
-  saucerMover.style.animation = `ee-fly-right ${dur}ms linear forwards`;
   saucerMover.appendChild(makeSaucer());
   overlay.appendChild(saucerMover);
 
-  // Jet uses same keyframe & speed, just delayed — constant gap
   const jetMover = document.createElement('div');
   jetMover.className = 'ee-mover';
-  jetMover.style.top = '16%';
-  jetMover.style.animation = `ee-fly-right ${dur}ms linear forwards`;
-  jetMover.style.animationDelay = `${jetDelay}ms`;
-  jetMover.style.transform = 'translateX(-100px)'; // start offscreen until delay kicks in
+  jetMover.style.top = '18%';
   jetMover.appendChild(makeJet('right'));
   overlay.appendChild(jetMover);
 
-  // Projectiles — spawn at jet nose, fly fast toward saucer
-  for (let i = 0; i < 5; i++) {
-    setTimeout(() => {
-      if (!overlay.isConnected) return;
-      const jetRect = jetMover.getBoundingClientRect();
-      if (jetRect.right < 0) return; // jet not on screen yet
-      const p = document.createElement('div');
-      p.className = 'ee-projectile';
-      p.style.top = `${jetRect.top + jetRect.height / 2 - 3}px`;
-      p.style.left = `${jetRect.right}px`;
-      p.style.animation = 'ee-projectile-fly 0.4s linear forwards';
-      overlay.appendChild(p);
-      setTimeout(() => p.remove(), 400);
-    }, jetDelay + 400 + i * 450);
-  }
+  const w = vw();
+  const gap = spriteGap();
+  const spriteW = 100; // approximate sprite width
+  // Total distance: from fully offscreen-left to fully offscreen-right
+  const startX = -spriteW - 20;
+  const endX = w + 40;
+  const totalDist = endX - startX;
 
-  setTimeout(() => {
-    saucerMover.remove();
-    jetMover.remove();
-    onDone();
-  }, dur + jetDelay);
+  // Projectile scheduling
+  const projectileTimes = [0.25, 0.35, 0.45, 0.55, 0.65];
+  const firedProjectiles = new Set();
+
+  await animate(4000, (p) => {
+    if (!overlay.isConnected) return;
+
+    const saucerX = startX + p * totalDist;
+    const jetX = saucerX - gap;
+
+    saucerMover.style.transform = `translateX(${saucerX}px)`;
+    jetMover.style.transform = `translateX(${jetX}px)`;
+
+    // Fire projectiles at specific progress points
+    for (const t of projectileTimes) {
+      if (p >= t && !firedProjectiles.has(t)) {
+        firedProjectiles.add(t);
+        fireProjectile(overlay, jetMover);
+      }
+    }
+  });
+
+  saucerMover.remove();
+  jetMover.remove();
+  onDone();
 }
 
-/* ── Phase 2: Saucer chases jet R→L, laser, explosion, saucer hovers ── */
-function phase2(overlay, onDone) {
-  const dur = 3500;
+function fireProjectile(overlay, jetMover) {
+  if (!overlay.isConnected) return;
+  const rect = jetMover.getBoundingClientRect();
+  if (rect.right < 0 || rect.left > vw()) return;
+  const p = document.createElement('div');
+  p.className = 'ee-projectile';
+  p.style.top = `${rect.top + rect.height * 0.4}px`;
+  p.style.left = `${rect.right - 10}px`;
+  overlay.appendChild(p);
+  setTimeout(() => p.remove(), 350);
+}
 
+/* ═══════════════════════════════════════════════════
+   Phase 2: Saucer chases jet R→L, laser, explosion
+   Saucer hovers at center after kill
+   ═══════════════════════════════════════════════════ */
+async function phase2(overlay, onDone) {
   const jetMover = document.createElement('div');
   jetMover.className = 'ee-mover';
-  jetMover.style.top = '16%';
-  jetMover.style.animation = `ee-fly-left-jet ${dur}ms ease-out forwards`;
+  jetMover.style.top = '18%';
   const jetEl = makeJet('left');
   jetMover.appendChild(jetEl);
   overlay.appendChild(jetMover);
 
-  // Saucer: flies in from right, stops at center to hover victoriously
   const saucerMover = document.createElement('div');
   saucerMover.className = 'ee-mover';
   saucerMover.style.top = '15%';
-  saucerMover.style.animation = `ee-fly-left-stop ${dur}ms ease-out forwards`;
   const saucerEl = makeSaucer();
   saucerMover.appendChild(saucerEl);
   overlay.appendChild(saucerMover);
 
-  // Store saucer ref on overlay so phase3 can target it
   overlay._saucerMover = saucerMover;
   overlay._saucerEl = saucerEl;
 
-  const hitTime = dur * 0.45;
-  setTimeout(() => {
+  const w = vw();
+  const gap = spriteGap();
+  const spriteW = 100;
+  const startX = w + spriteW;
+  // Jet stops at 35% from left
+  const jetStopX = w * 0.35;
+  // Saucer ends at center
+  const saucerEndX = w * 0.45;
+
+  let laserFired = false;
+  let jetExploded = false;
+
+  await animate(3500, (p) => {
     if (!overlay.isConnected) return;
 
-    // Read actual positions from the DOM
-    const saucerRect = saucerMover.getBoundingClientRect();
-    const jetRect = jetMover.getBoundingClientRect();
-    const saucerX = saucerRect.left + saucerRect.width / 2;
-    const jetCenterX = jetRect.left + jetRect.width / 2;
+    // Jet: flies in from right, decelerates and stops at jetStopX
+    const jetEase = easeOutCubic(Math.min(p / 0.4, 1)); // stops by 40% of animation
+    const jetX = startX + (jetStopX - startX) * jetEase;
 
-    const laser = document.createElement('div');
-    laser.className = 'ee-laser';
-    const laserTop = saucerRect.top + saucerRect.height / 2;
-    laser.style.top = `${laserTop}px`;
-    laser.style.left = `${Math.min(jetCenterX, saucerX)}px`;
-    laser.style.width = `${Math.abs(saucerX - jetCenterX)}px`;
-    overlay.appendChild(laser);
+    // Saucer: flies in from right, decelerates to hover at center
+    const saucerEase = easeOutCubic(Math.min(p / 0.7, 1));
+    const saucerX = (startX + gap) + (saucerEndX - (startX + gap)) * saucerEase;
 
-    setTimeout(() => {
-      laser.remove();
-      const boom = document.createElement('div');
-      boom.className = 'ee-explosion';
-      boom.style.top = `${jetRect.top + jetRect.height / 2 - 5}px`;
-      boom.style.left = `${jetCenterX - 5}px`;
-      overlay.appendChild(boom);
+    jetMover.style.transform = `translateX(${jetX}px)`;
+    saucerMover.style.transform = `translateX(${saucerX}px)`;
+
+    // Fire laser at 45%
+    if (p >= 0.45 && !laserFired) {
+      laserFired = true;
+      fireLaser(overlay, saucerMover, jetMover);
+    }
+
+    // Explode jet at 55%
+    if (p >= 0.55 && !jetExploded) {
+      jetExploded = true;
+      explodeAt(overlay, jetMover, 'ee-explosion');
       jetEl.style.visibility = 'hidden';
-      setTimeout(() => boom.remove(), 800);
-    }, 300);
-  }, hitTime);
+    }
+  });
 
-  setTimeout(() => {
-    jetMover.remove();
-    // saucerMover stays — phase3 will clean it up
-    onDone();
-  }, dur + 800);
+  jetMover.remove();
+  // saucerMover stays for phase 3
+  onDone();
 }
 
-/* ── Phase 3: Lockheed Martin missile from below takes out the saucer ── */
-function phase3(overlay, onDone) {
-  const dur = 1500;
+function fireLaser(overlay, fromMover, toMover) {
+  if (!overlay.isConnected) return;
+  const fromRect = fromMover.getBoundingClientRect();
+  const toRect = toMover.getBoundingClientRect();
+  const fromX = fromRect.left + fromRect.width * 0.3;
+  const toX = toRect.left + toRect.width * 0.5;
+  const y = fromRect.top + fromRect.height * 0.5;
 
-  // Saucer is hovering at ~50vw, 15% top from phase 2
+  const laser = document.createElement('div');
+  laser.className = 'ee-laser';
+  laser.style.top = `${y}px`;
+  laser.style.left = `${Math.min(fromX, toX)}px`;
+  laser.style.width = `${Math.abs(fromX - toX)}px`;
+  overlay.appendChild(laser);
+  setTimeout(() => laser.remove(), 350);
+}
+
+function explodeAt(overlay, targetMover, extraClass) {
+  if (!overlay.isConnected) return;
+  const rect = targetMover.getBoundingClientRect();
+  const boom = document.createElement('div');
+  boom.className = `ee-explosion ${extraClass || ''}`;
+  boom.style.top = `${rect.top + rect.height / 2 - 5}px`;
+  boom.style.left = `${rect.left + rect.width / 2 - 5}px`;
+  overlay.appendChild(boom);
+  setTimeout(() => boom.remove(), 1200);
+}
+
+/* ═══════════════════════════════════════════════════
+   Phase 3: Lockheed Martin missile from below
+   ═══════════════════════════════════════════════════ */
+async function phase3(overlay, onDone) {
   const saucerMover = overlay._saucerMover;
   const saucerEl = overlay._saucerEl;
-  const saucerCenterX = window.innerWidth * 0.50 + 30;
-  const saucerTopPx = window.innerHeight * 0.15 + 16;
 
-  // Missile rises from bottom toward saucer
+  if (!saucerMover || !overlay.isConnected) { onDone(); return; }
+
+  const saucerRect = saucerMover.getBoundingClientRect();
+  const targetX = saucerRect.left + saucerRect.width / 2;
+  const targetY = saucerRect.top + saucerRect.height / 2;
+  const screenH = window.innerHeight;
+
   const missile = document.createElement('div');
   missile.className = 'ee-missile';
-  missile.style.left = `${saucerCenterX - 4}px`;
-  missile.style.bottom = '-40px';
-  missile.style.animation = `ee-missile-rise ${dur}ms ease-in forwards`;
-  // Set the target top as a CSS variable so the keyframe can use it
-  missile.style.setProperty('--target-top', `${saucerTopPx}px`);
+  missile.style.left = `${targetX - 4}px`;
+  overlay.appendChild(missile);
 
-  // Smoke trail
   const trail = document.createElement('div');
   trail.className = 'ee-missile-trail';
   missile.appendChild(trail);
 
-  // Label
   const label = document.createElement('div');
   label.className = 'ee-missile-label';
   label.textContent = 'LOCKHEED MARTIN';
   missile.appendChild(label);
 
-  overlay.appendChild(missile);
+  const startY = screenH + 40;
+  const endY = targetY;
 
-  // At impact
-  setTimeout(() => {
+  await animate(1200, (p) => {
     if (!overlay.isConnected) return;
-    missile.remove();
+    const eased = easeInQuad(p);
+    const y = startY + (endY - startY) * eased;
+    missile.style.top = `${y}px`;
+  });
 
-    // Green-tinted explosion for the saucer
-    const boom = document.createElement('div');
-    boom.className = 'ee-explosion ee-explosion-green';
-    boom.style.top = `${saucerTopPx - 5}px`;
-    boom.style.left = `${saucerCenterX - 5}px`;
-    overlay.appendChild(boom);
+  missile.remove();
 
-    if (saucerEl) saucerEl.style.visibility = 'hidden';
+  // Green explosion on saucer
+  explodeAt(overlay, saucerMover, 'ee-explosion-green');
+  if (saucerEl) saucerEl.style.visibility = 'hidden';
 
-    // Flash "LOCKHEED MARTIN" text on screen
-    const winText = document.createElement('div');
-    winText.className = 'ee-win-text';
-    winText.textContent = 'LOCKHEED MARTIN';
-    overlay.appendChild(winText);
+  // Victory text
+  const winText = document.createElement('div');
+  winText.className = 'ee-win-text';
+  winText.textContent = 'LOCKHEED MARTIN';
+  overlay.appendChild(winText);
 
-    setTimeout(() => {
-      boom.remove();
-      winText.remove();
-      if (saucerMover) saucerMover.remove();
-      onDone();
-    }, 2000);
-  }, dur);
+  await new Promise(r => setTimeout(r, 2000));
+  winText.remove();
+  saucerMover.remove();
+  onDone();
 }
 
-/* ── Sprite builders ── */
+/* ── Easing functions ── */
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeInQuad(t) { return t * t; }
+
+/* ═══════════════════════════════════════════════════
+   Sprite builders
+   ═══════════════════════════════════════════════════ */
 
 function makeSaucer() {
   const el = document.createElement('div');
@@ -213,20 +290,15 @@ function makeSaucer() {
   return el;
 }
 
-// direction: 'right' (nose pointing right) or 'left' (nose pointing left)
 function makeJet(direction) {
   const el = document.createElement('div');
   el.className = 'ee-jet';
 
-  // SVG fighter jet — top-down view, nose pointing RIGHT
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('viewBox', '0 0 120 50');
-  svg.setAttribute('width', '120');
-  svg.setAttribute('height', '50');
   svg.style.overflow = 'visible';
 
-  // Flip the entire SVG content if facing left
   if (direction === 'left') {
     const g = document.createElementNS(svgNS, 'g');
     g.setAttribute('transform', 'translate(120,0) scale(-1,1)');
@@ -238,7 +310,6 @@ function makeJet(direction) {
 
   el.appendChild(svg);
 
-  // Label underneath — always reads left to right
   const label = document.createElement('div');
   label.className = 'ee-jet-label';
   label.textContent = 'NORTHROP GRUMMAN';
@@ -248,22 +319,18 @@ function makeJet(direction) {
 }
 
 function buildJetPaths(ns, parent) {
-  // Main fuselage
   const fuse = document.createElementNS(ns, 'polygon');
   fuse.setAttribute('points', '118,25 105,21 30,22 20,24 10,25 20,26 30,28 105,29');
   fuse.setAttribute('fill', '#3a3a44');
 
-  // Swept wings
   const wings = document.createElementNS(ns, 'polygon');
   wings.setAttribute('points', '75,25 85,22 65,2 50,18 50,32 65,48 85,28');
   wings.setAttribute('fill', '#2e2e38');
 
-  // Tail fins
   const tail = document.createElementNS(ns, 'polygon');
   tail.setAttribute('points', '30,24 18,10 10,20 10,30 18,40 30,26');
   tail.setAttribute('fill', '#2e2e38');
 
-  // Canopy (cockpit window)
   const canopy = document.createElementNS(ns, 'ellipse');
   canopy.setAttribute('cx', '95');
   canopy.setAttribute('cy', '25');
@@ -272,7 +339,6 @@ function buildJetPaths(ns, parent) {
   canopy.setAttribute('fill', '#556688');
   canopy.setAttribute('opacity', '0.7');
 
-  // Engine glow
   const engine = document.createElementNS(ns, 'ellipse');
   engine.setAttribute('cx', '6');
   engine.setAttribute('cy', '25');
@@ -281,7 +347,6 @@ function buildJetPaths(ns, parent) {
   engine.setAttribute('fill', '#ff6600');
   engine.setAttribute('opacity', '0.8');
 
-  // Engine glow halo
   const halo = document.createElementNS(ns, 'ellipse');
   halo.setAttribute('cx', '4');
   halo.setAttribute('cy', '25');
