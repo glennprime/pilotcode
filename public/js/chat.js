@@ -477,12 +477,20 @@ export class Chat {
     this.history = [];
 
     // Async operations: save old history, load new history.
-    // During these awaits, WebSocket messages will be processed,
-    // and session_rejoined / session_busy will restore busy state if needed.
+    // During these awaits, WebSocket messages (session_rejoined, session_busy)
+    // may fire and create a thinking element via showThinking().
     await this.saveHistory();
 
     if (newSessionId) {
       await this.loadHistory(newSessionId);
+    }
+
+    // Race fix: if session_busy arrived during loadHistory's fetch, the
+    // thinking element was appended before the history messages, leaving it
+    // buried above the chat. Re-append it to move it to the bottom.
+    if (this.thinkingEl) {
+      this.messagesEl.appendChild(this.thinkingEl);
+      this.scrollToBottom();
     }
   }
 
