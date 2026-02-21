@@ -1261,6 +1261,53 @@ html, body {
   letter-spacing: -0.3px;
 }
 
+/* ── File Download Links ── */
+.file-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 16px 8px;
+}
+
+.file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  transition: background 0.15s, border-color 0.15s;
+  cursor: pointer;
+}
+
+.file-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-dim);
+}
+
+.file-link-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.file-link-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-link-action {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--font-sans);
+}
+
 /* Image in messages */
 .message img.chat-image {
   max-width: 100%;
