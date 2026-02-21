@@ -4,9 +4,10 @@ export class WSClient {
     this.onStatusChange = onStatusChange;
     this.ws = null;
     this.reconnectDelay = 1000;
-    this.maxReconnectDelay = 30000;
+    this.maxReconnectDelay = 10000; // reduced from 30s — mobile users shouldn't wait long
     this.shouldReconnect = true;
     this.activeSessionId = null;
+    this.pendingMessages = []; // queue messages while disconnected
   }
 
   connect() {
@@ -24,6 +25,9 @@ export class WSClient {
       if (this.activeSessionId) {
         this.send({ type: 'rejoin_session', sessionId: this.activeSessionId });
       }
+
+      // Flush any messages that were queued while disconnected
+      this.flushPending();
     };
 
     this.ws.onmessage = (e) => {
@@ -31,9 +35,6 @@ export class WSClient {
         const msg = JSON.parse(e.data);
 
         // Strip internal session tag before passing to the app.
-        // Session isolation is handled server-side: the server immediately
-        // removes the client from the old session's broadcast list on switch,
-        // so only messages from the active session reach this client.
         delete msg._sid;
 
         this.onMessage(msg);
@@ -64,7 +65,23 @@ export class WSClient {
       this.ws.send(JSON.stringify(msg));
       return true;
     }
+    // Queue user messages and interrupts for delivery after reconnect
+    if (msg.type === 'message' || msg.type === 'interrupt' || msg.type === 'permission_response') {
+      this.pendingMessages.push(msg);
+    }
     return false;
+  }
+
+  flushPending() {
+    if (this.pendingMessages.length === 0) return;
+    // Small delay to let rejoin_session complete first
+    setTimeout(() => {
+      const msgs = [...this.pendingMessages];
+      this.pendingMessages = [];
+      for (const msg of msgs) {
+        this.send(msg);
+      }
+    }, 500);
   }
 
   setActiveSession(sessionId) {
