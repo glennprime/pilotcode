@@ -33,7 +33,7 @@ function runEasterEgg() {
 // ────────────────────────────────────────────────
 function runPhase1(overlay) {
   const W = window.innerWidth;
-  const gap = 200; // constant gap between UFO (leader) and jet (chaser)
+  const gap = 450; // constant gap between UFO (leader) and jet (chaser)
 
   const ufo = createUFO();
   const jet = createJet('right');
@@ -92,7 +92,7 @@ function runPhase1(overlay) {
 // ────────────────────────────────────────────────
 function runPhase2(overlay) {
   const W = window.innerWidth;
-  const gap = 200;
+  const gap = 450;
 
   const jet = createJet('left');
   const ufo = createUFO();
