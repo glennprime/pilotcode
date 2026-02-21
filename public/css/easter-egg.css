@@ -1,0 +1,157 @@
+/* Easter Egg: Northrop Grumman vs UFO */
+
+#ee-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* === Saucer === */
+.ee-saucer {
+  position: absolute;
+  top: 18%;
+  width: 60px;
+  height: 24px;
+  will-change: transform;
+}
+
+.ee-saucer-body {
+  width: 60px;
+  height: 24px;
+  background: radial-gradient(ellipse at center, #b0b8c0 0%, #6a7a8a 60%, #3a4a5a 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 18px 6px rgba(0, 255, 200, 0.5), 0 0 40px 12px rgba(0, 255, 200, 0.2);
+  animation: ee-glow-pulse 0.6s ease-in-out infinite alternate;
+}
+
+.ee-saucer-dome {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 14px;
+  background: radial-gradient(ellipse at center bottom, rgba(180, 255, 240, 0.9), rgba(100, 220, 200, 0.5));
+  border-radius: 50% 50% 40% 40%;
+}
+
+@keyframes ee-glow-pulse {
+  from { box-shadow: 0 0 18px 6px rgba(0, 255, 200, 0.5), 0 0 40px 12px rgba(0, 255, 200, 0.2); }
+  to   { box-shadow: 0 0 24px 10px rgba(0, 255, 200, 0.7), 0 0 50px 18px rgba(0, 255, 200, 0.35); }
+}
+
+@keyframes ee-wobble {
+  0%, 100% { transform: rotate(-3deg) translateY(0); }
+  50%      { transform: rotate(3deg) translateY(-4px); }
+}
+
+/* === Jet (B-2 silhouette) === */
+.ee-jet {
+  position: absolute;
+  top: 22%;
+  width: 56px;
+  height: 28px;
+  will-change: transform;
+}
+
+.ee-jet-body {
+  width: 0;
+  height: 0;
+  border-left: 28px solid transparent;
+  border-right: 28px solid transparent;
+  border-bottom: 14px solid #2a2a30;
+  filter: drop-shadow(0 0 4px rgba(255, 150, 50, 0.3));
+  position: relative;
+}
+
+.ee-jet-body::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: -14px;
+  width: 28px;
+  height: 8px;
+  background: #2a2a30;
+  clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%);
+}
+
+.ee-jet-label {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: 'Courier New', monospace;
+  font-size: 6px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 3px rgba(0,0,0,0.8);
+  letter-spacing: 0.5px;
+}
+
+/* === Projectiles === */
+.ee-projectile {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: radial-gradient(circle, #ffaa33 0%, #ff6600 80%);
+  border-radius: 50%;
+  box-shadow: 0 0 6px 2px rgba(255, 140, 0, 0.7);
+}
+
+/* === Laser === */
+.ee-laser {
+  position: absolute;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(0, 255, 100, 0.9), rgba(0, 255, 200, 0.6));
+  box-shadow: 0 0 8px 3px rgba(0, 255, 150, 0.5);
+  transform-origin: right center;
+}
+
+/* === Explosion === */
+.ee-explosion {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #ffcc00 20%, #ff6600 50%, #cc2200 75%, transparent 100%);
+  animation: ee-explode 0.8s ease-out forwards;
+}
+
+@keyframes ee-explode {
+  0%   { transform: scale(1); opacity: 1; }
+  50%  { transform: scale(8); opacity: 0.8; }
+  100% { transform: scale(12); opacity: 0; }
+}
+
+/* === Phase 1: Chase (left to right) === */
+@keyframes ee-fly-right-saucer {
+  0%   { transform: translateX(-80px); }
+  100% { transform: translateX(calc(100vw + 80px)); }
+}
+
+@keyframes ee-fly-right-jet {
+  0%   { transform: translateX(-200px); }
+  100% { transform: translateX(calc(100vw + 80px)); }
+}
+
+/* === Phase 2: Revenge (right to left) === */
+@keyframes ee-fly-left-saucer {
+  0%   { transform: translateX(calc(100vw + 80px)); }
+  100% { transform: translateX(-80px); }
+}
+
+@keyframes ee-fly-left-jet {
+  0%   { transform: translateX(calc(100vw + 80px)); }
+  40%  { transform: translateX(45vw); }
+  /* jet stops here — gets hit */
+  100% { transform: translateX(45vw); }
+}
+
+/* === Projectile flight (phase 1, left to right) === */
+@keyframes ee-projectile-fly {
+  0%   { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(120px); }
+}
