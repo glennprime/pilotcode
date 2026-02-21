@@ -14,7 +14,7 @@
   overflow: hidden;
 }
 
-/* === Flight path wrappers (these get the translateX animation) === */
+/* === Flight path wrappers === */
 .ee-mover {
   position: absolute;
   will-change: transform;
@@ -60,60 +60,21 @@
   50%      { transform: rotate(3deg) translateY(-4px); }
 }
 
-/* === Jet (fighter silhouette using clip-path) === */
+/* === Jet (SVG-based) === */
 .ee-jet {
   position: relative;
-  width: 80px;
-  height: 50px;
+  width: 120px;
+  height: 60px;
 }
 
-.ee-jet-body {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 80px;
-  height: 36px;
-  background: linear-gradient(180deg, #3a3a42 0%, #1e1e24 100%);
-  clip-path: polygon(
-    100% 45%,
-    70% 40%,
-    55% 0%,
-    45% 0%,
-    30% 40%,
-    0% 30%,
-    0% 50%,
-    30% 48%,
-    35% 75%,
-    42% 100%,
-    58% 100%,
-    65% 75%,
-    70% 48%,
-    100% 55%
-  );
-  filter: drop-shadow(1px 2px 3px rgba(0,0,0,0.5));
-}
-
-/* engine glow */
-.ee-jet-body::after {
-  content: '';
-  position: absolute;
-  left: -4px;
-  top: 38%;
-  width: 8px;
-  height: 8px;
-  background: radial-gradient(circle, #ff8800 0%, #ff4400 60%, transparent 100%);
-  border-radius: 50%;
-  animation: ee-engine-flicker 0.15s ease-in-out infinite alternate;
-}
-
-@keyframes ee-engine-flicker {
-  from { opacity: 0.7; transform: scale(0.8); }
-  to   { opacity: 1; transform: scale(1.2); }
+.ee-jet svg {
+  display: block;
+  filter: drop-shadow(1px 2px 4px rgba(0,0,0,0.5));
 }
 
 .ee-jet-label {
   position: absolute;
-  bottom: 0;
+  bottom: -2px;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -122,18 +83,8 @@
   font-weight: bold;
   color: #fff;
   text-shadow: 0 0 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.8);
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-}
-
-/* Flip jet to face left (for phase 2, fleeing right-to-left) */
-.ee-jet-flip {
-  transform: scaleX(-1);
-}
-
-/* Flip saucer to face left (for phase 2, chasing right-to-left) */
-.ee-saucer-flip {
-  transform: scaleX(-1);
 }
 
 /* === Projectiles === */
@@ -183,7 +134,7 @@
 }
 
 @keyframes ee-fly-right-trail {
-  0%   { transform: translateX(-220px); }
+  0%   { transform: translateX(-500px); }
   100% { transform: translateX(calc(100vw + 100px)); }
 }
 
