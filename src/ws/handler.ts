@@ -47,7 +47,7 @@ const CRASH_RETRY_WINDOW = 60_000; // reset retry count after 60s
 const MESSAGE_BUFFER_SIZE = 100;
 const sessionMessageBuffers = new Map<string, string[]>();
 
-// Track session busy state: 'idle' | 'busy' | 'permission'
+// Unified session busy state: 'idle' | 'busy' | 'permission'
 export type SessionBusyState = 'idle' | 'busy' | 'permission';
 const sessionBusyStates = new Map<string, SessionBusyState>();
 
@@ -55,18 +55,16 @@ export function getSessionBusyState(sessionId: string): SessionBusyState {
   return sessionBusyStates.get(sessionId) || 'idle';
 }
 
-// Track which processes already have broadcast listeners attached.
-// This prevents adding duplicate listeners and ensures every process
-// that needs one gets wired — even after server restart.
-const wiredProcesses = new WeakSet<ClaudeProcess>();
-
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
-
-// Message types that are relevant for buffer replay on rejoin/resume
-const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
-
-// Track busy (processing) state per session
-export const sessionBusyState = new Map<string, boolean>();
+/**
+ * Convenience export for API layer — returns true if session is doing work.
+ * This is the ONLY busy tracking — there is no separate boolean map.
+ */
+export const sessionBusyState = {
+  get(sessionId: string): boolean {
+    const state = sessionBusyStates.get(sessionId);
+    return state === 'busy' || state === 'permission';
+  },
+};
 
 // Reference to WebSocketServer for global broadcasts
 let wssRef: WebSocketServer | null = null;
@@ -80,6 +78,27 @@ function broadcastGlobal(data: string): void {
     }
   }
 }
+
+/** Update session busy state and broadcast change to all clients. */
+function setSessionBusy(sessionId: string, state: SessionBusyState): void {
+  const prev = sessionBusyStates.get(sessionId) || 'idle';
+  sessionBusyStates.set(sessionId, state);
+  const wasBusy = prev === 'busy' || prev === 'permission';
+  const isBusy = state === 'busy' || state === 'permission';
+  if (wasBusy !== isBusy) {
+    broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: isBusy }));
+  }
+}
+
+// Track which processes already have broadcast listeners attached.
+// This prevents adding duplicate listeners and ensures every process
+// that needs one gets wired — even after server restart.
+const wiredProcesses = new WeakSet<ClaudeProcess>();
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+
+// Message types that are relevant for buffer replay on rejoin/resume
+const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
 
 /**
  * Tag a message with its session ID so clients can filter by session.
@@ -375,10 +394,11 @@ function handleResumeSession(
     addClient(actualSid, ws);
     if (actualSid !== sessionId) addClient(sessionId, ws);
     const busyState = getSessionBusyState(actualSid);
-    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid, busy: false }));
+    const isBusy = busyState !== 'idle';
+    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid, busy: isBusy }));
     replayBufferedMessages(ws, actualSid);
     // Send busy status AFTER replay so it doesn't get hidden by replayed assistant messages
-    if (busyState !== 'idle') {
+    if (isBusy) {
       ws.send(JSON.stringify({ type: 'session_busy', sessionId: actualSid, state: busyState }));
     }
     wireExistingProcess(ws, proc, actualSid, manager);
@@ -457,9 +477,10 @@ function handleRejoinSession(
     addClient(actualSid, ws);
     if (actualSid !== sessionId) addClient(sessionId, ws);
     const busyState = getSessionBusyState(actualSid);
-    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid, busy: false }));
+    const isBusy = busyState !== 'idle';
+    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid, busy: isBusy }));
     replayBufferedMessages(ws, actualSid);
-    if (busyState !== 'idle') {
+    if (isBusy) {
       ws.send(JSON.stringify({ type: 'session_busy', sessionId: actualSid, state: busyState }));
     }
     wireExistingProcess(ws, proc, actualSid, manager);
@@ -514,12 +535,14 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       }
     }
 
-    // Track session busy state
+    // Track session busy state transitions
     if (sessionId) {
-      if (msg.type === 'control_request') {
-        sessionBusyStates.set(sessionId, 'permission');
+      if (msg.type === 'assistant') {
+        setSessionBusy(sessionId, 'busy');
+      } else if (msg.type === 'control_request') {
+        setSessionBusy(sessionId, 'permission');
       } else if (msg.type === 'result') {
-        sessionBusyStates.set(sessionId, 'idle');
+        setSessionBusy(sessionId, 'idle');
       }
     }
 
@@ -558,16 +581,7 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       originWs.send(JSON.stringify(msg));
     }
 
-    // Track busy state and broadcast to all clients
-    if (sessionId) {
-      if (msg.type === 'assistant' && !sessionBusyState.get(sessionId)) {
-        sessionBusyState.set(sessionId, true);
-        broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: true }));
-      } else if (msg.type === 'result' && sessionBusyState.get(sessionId)) {
-        sessionBusyState.set(sessionId, false);
-        broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: false }));
-      }
-    }
+    // (busy state tracking is handled above via setSessionBusy)
   });
 
   proc.on('stderr', (text: string) => {
@@ -577,9 +591,8 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
   });
 
   proc.on('close', (code: number) => {
-    if (sessionId && sessionBusyState.has(sessionId)) {
-      sessionBusyState.delete(sessionId);
-      broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: false }));
+    if (sessionId) {
+      setSessionBusy(sessionId, 'idle');
     }
     handleProcessClose(proc, code, sessionId, replacesSessionId || undefined, name, cwd, model, manager, originWs);
   });
@@ -664,10 +677,12 @@ function handleProcessClose(
   sessionLog('PROCESS_EXIT', { sessionId: sessionId || 'none', code, name, replacesId: replacesSessionId || 'none' });
   log('claude', `Process closed with code ${code}, sessionId=${sessionId}`);
 
-  // Clear busy state on process exit
+  // Clear busy state on process exit (broadcast already done in close handler)
   if (sessionId) {
     sessionBusyStates.set(sessionId, 'idle');
   }
+  // Note: the close listener on the process already calls setSessionBusy('idle')
+  // which broadcasts the status change. This direct set is a safety net.
 
   if (!sessionId) {
     const fallbackSid = replacesSessionId || null;
@@ -768,11 +783,7 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
 
   // Mark session as busy when user sends a message
   if (sessionId) {
-    sessionBusyStates.set(sessionId, 'busy');
-    if (!sessionBusyState.get(sessionId)) {
-      sessionBusyState.set(sessionId, true);
-      broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: true }));
-    }
+    setSessionBusy(sessionId, 'busy');
   }
 
   const text = msg.content || '';

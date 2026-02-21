@@ -108,6 +108,17 @@ function showApp() {
   // Connect WebSocket (will auto-rejoin session if activeSessionId is set)
   wsClient.connect();
 
+  // Proactive reconnect when user returns to the app (mobile background, tab switch)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // If WS is dead, force immediate reconnect instead of waiting for backoff
+      if (wsClient.ws?.readyState !== WebSocket.OPEN && wsClient.ws?.readyState !== WebSocket.CONNECTING) {
+        wsClient.reconnectDelay = 100; // near-instant
+        wsClient.connect();
+      }
+    }
+  });
+
   // Input handling
   setupInput();
   initDingToggle();
