@@ -687,10 +687,6 @@ html, body {
   display: flex;
 }
 
-#input-area.busy #send-btn {
-  display: none;
-}
-
 #image-btn {
   background: var(--bg-elevated);
   color: var(--text-dim);
