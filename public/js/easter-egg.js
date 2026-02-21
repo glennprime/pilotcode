@@ -33,7 +33,8 @@ function runEasterEgg() {
 
 /* ── Phase 1: Saucer flees L→R, jet chases & fires ── */
 function phase1(overlay, onDone) {
-  const dur = 3500;
+  const dur = 4000;
+  const jetDelay = 600; // jet enters 600ms after saucer = constant gap
 
   const saucerMover = document.createElement('div');
   saucerMover.className = 'ee-mover';
@@ -42,35 +43,37 @@ function phase1(overlay, onDone) {
   saucerMover.appendChild(makeSaucer());
   overlay.appendChild(saucerMover);
 
+  // Jet uses same keyframe & speed, just delayed — constant gap
   const jetMover = document.createElement('div');
   jetMover.className = 'ee-mover';
   jetMover.style.top = '16%';
-  jetMover.style.animation = `ee-fly-right-trail ${dur}ms linear forwards`;
+  jetMover.style.animation = `ee-fly-right ${dur}ms linear forwards`;
+  jetMover.style.animationDelay = `${jetDelay}ms`;
+  jetMover.style.transform = 'translateX(-100px)'; // start offscreen until delay kicks in
   jetMover.appendChild(makeJet('right'));
   overlay.appendChild(jetMover);
 
-  // Projectiles
-  const startTime = Date.now();
+  // Projectiles — spawn at jet nose, fly fast toward saucer
   for (let i = 0; i < 5; i++) {
     setTimeout(() => {
       if (!overlay.isConnected) return;
+      const jetRect = jetMover.getBoundingClientRect();
+      if (jetRect.right < 0) return; // jet not on screen yet
       const p = document.createElement('div');
       p.className = 'ee-projectile';
-      const progress = (Date.now() - startTime) / dur;
-      const jetX = -500 + progress * (window.innerWidth + 600);
-      p.style.top = `calc(16% + 20px)`;
-      p.style.left = `${jetX + 100}px`;
-      p.style.animation = 'ee-projectile-fly 0.5s linear forwards';
+      p.style.top = `${jetRect.top + jetRect.height / 2 - 3}px`;
+      p.style.left = `${jetRect.right}px`;
+      p.style.animation = 'ee-projectile-fly 0.4s linear forwards';
       overlay.appendChild(p);
-      setTimeout(() => p.remove(), 500);
-    }, 300 + i * 500);
+      setTimeout(() => p.remove(), 400);
+    }, jetDelay + 400 + i * 450);
   }
 
   setTimeout(() => {
     saucerMover.remove();
     jetMover.remove();
     onDone();
-  }, dur);
+  }, dur + jetDelay);
 }
 
 /* ── Phase 2: Saucer chases jet R→L, laser, explosion, saucer hovers ── */
