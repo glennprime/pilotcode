@@ -4,6 +4,8 @@
 #ee-trigger {
   cursor: default;
   -webkit-tap-highlight-color: transparent;
+  padding: 10px;
+  margin: -10px;
 }
 
 #ee-overlay {
