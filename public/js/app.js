@@ -94,6 +94,14 @@ function showApp() {
   setupInput();
   initDingToggle();
   initNtfyToggle();
+
+  // Show no-session prompt, hide input until a session is active
+  showNoSessionPrompt();
+
+  // Wire "New Session" button in the center prompt
+  document.getElementById('start-session-btn').onclick = () => {
+    sessionUI.showNewSessionModal();
+  };
 }
 
 function setupInput() {
@@ -116,6 +124,19 @@ function setupInput() {
   sendBtn.onclick = () => sendMessage();
 }
 
+function showNoSessionPrompt() {
+  document.getElementById('no-session-prompt').classList.add('active');
+  document.getElementById('messages').style.display = 'none';
+  document.getElementById('input-area').style.display = 'none';
+  document.getElementById('image-preview').style.display = 'none';
+}
+
+function hideNoSessionPrompt() {
+  document.getElementById('no-session-prompt').classList.remove('active');
+  document.getElementById('messages').style.display = '';
+  document.getElementById('input-area').style.display = '';
+}
+
 function sendMessage() {
   const input = document.getElementById('message-input');
   const text = input.value.trim();
@@ -123,22 +144,8 @@ function sendMessage() {
 
   if (!text && images.length === 0) return;
 
-  // If no active session, create one and queue the message
+  // No active session — user must create one via the modal
   if (!sessionUI.currentSessionId || sessionUI.currentSessionId === '__creating__') {
-    if (creatingSession) return; // already creating, wait
-    creatingSession = true;
-    pendingMessage = { text, images, pendingImages: [...imageHandler.pendingImages] };
-    // Use first few words of the message as the session name
-    const name = text.slice(0, 40) || 'New Session';
-    // Clear old session content before creating new one
-    chat.clear();
-    sessionGreeted = false;
-    wsClient.send({ type: 'create_session', name });
-    // Clear input immediately
-    input.value = '';
-    input.style.height = 'auto';
-    document.getElementById('send-btn').disabled = true;
-    imageHandler.clear();
     return;
   }
 
@@ -171,6 +178,7 @@ function handleMessage(msg) {
         chat.setSession(msg.session_id);
         wsClient.setActiveSession(msg.session_id);
         creatingSession = false;
+        hideNoSessionPrompt();
 
         // Send any queued message now that session is ready
         if (pendingMessage) {
@@ -237,6 +245,7 @@ function handleMessage(msg) {
       chat.addSystemMessage(msg.error || 'Session crashed. Please resume manually.');
       sessionUI.currentSessionId = null;
       creatingSession = false;
+      showNoSessionPrompt();
       break;
 
     // Fresh start fallback — resume couldn't find a valid session
