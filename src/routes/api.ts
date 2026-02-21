@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { extname, join } from 'path';
 import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
+import { sessionBusyState } from '../ws/handler.js';
 import { requireAuth } from './auth.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
@@ -57,6 +58,7 @@ export function createApiRouter(manager: SessionManager): Router {
       sessions.map((s) => ({
         ...s,
         active: active.includes(s.id),
+        busy: sessionBusyState.get(s.id) || false,
       }))
     );
   });

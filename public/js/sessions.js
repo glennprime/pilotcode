@@ -23,11 +23,17 @@ export class SessionUI {
     this.drawer.classList.add('open');
     this.overlay.classList.add('active');
     this.refreshList();
+    // Poll while drawer is open so busy dots stay fresh
+    this._pollTimer = setInterval(() => this.refreshList(), 3000);
   }
 
   closeDrawer() {
     this.drawer.classList.remove('open');
     this.overlay.classList.remove('active');
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
   }
 
   async refreshList() {
@@ -51,10 +57,11 @@ export class SessionUI {
     for (const s of sessions) {
       const el = document.createElement('div');
       el.className = 'session-item' + (s.id === this.currentSessionId ? ' active' : '');
+      el.dataset.sessionId = s.id;
       el.innerHTML = `
         <div class="session-item-row">
           <div class="session-item-name">
-            ${s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
+            ${s.active ? `<span class="active-dot${s.busy ? ' busy' : ''}"></span>` : ''}${escapeHtml(s.name)}
           </div>
           <button class="session-rename-btn" title="Rename">&#9998;</button>
           <button class="session-delete-btn" title="Delete">&times;</button>
@@ -126,6 +133,7 @@ export class SessionUI {
     } catch { /* ignore */ }
     if (sessionId === this.currentSessionId) {
       this.currentSessionId = null;
+      localStorage.removeItem('pilotcode_session');
       document.getElementById('session-name').textContent = 'No Session';
     }
     this.refreshList();
@@ -286,6 +294,7 @@ export class SessionUI {
   resumeSession(sessionId, name) {
     if (sessionId === this.currentSessionId) return; // already active
     this.currentSessionId = sessionId;
+    localStorage.setItem('pilotcode_session', sessionId);
     this.wsClient.setActiveSession(sessionId);
     this.wsClient.send({ type: 'resume_session', sessionId });
     document.getElementById('session-name').textContent = name || sessionId.slice(0, 8);
@@ -294,6 +303,7 @@ export class SessionUI {
 
   setCurrentSession(sessionId) {
     this.currentSessionId = sessionId;
+    localStorage.setItem('pilotcode_session', sessionId);
     // Fetch the session name from the server
     fetch('/api/sessions')
       .then((r) => r.json())
@@ -305,6 +315,15 @@ export class SessionUI {
       .catch(() => {
         document.getElementById('session-name').textContent = sessionId.slice(0, 8);
       });
+  }
+
+  updateSessionBusy(sessionId, busy) {
+    const item = this.list.querySelector(`[data-session-id="${sessionId}"]`);
+    if (!item) return;
+    const dot = item.querySelector('.active-dot');
+    if (dot) {
+      dot.classList.toggle('busy', busy);
+    }
   }
 }
 

@@ -19,6 +19,10 @@ export class Chat {
     this.sessionId = sessionId;
   }
 
+  setWorking(active) {
+    document.getElementById('input-area').classList.toggle('busy', active);
+  }
+
   addUserMessage(text, images) {
     const el = document.createElement('div');
     el.className = 'message user';
@@ -74,6 +78,7 @@ export class Chat {
 
   showThinking(label) {
     this.hideThinking();
+    this.setWorking(true);
     this.thinkingEl = document.createElement('div');
     this.thinkingEl.className = 'thinking';
     this.thinkingEl.innerHTML = `
@@ -189,6 +194,7 @@ export class Chat {
       case 'result':
         this.hideThinking();
         this.finishStreaming();
+        this.setWorking(false);
         if (msg.is_error && msg.result) {
           this.addSystemMessage(`Error: ${msg.result}`);
         }
@@ -212,6 +218,7 @@ export class Chat {
       case 'process_exit':
         this.hideThinking();
         this.finishStreaming();
+        this.setWorking(false);
         if (msg.error) {
           this.addSystemMessage(msg.error);
         } else if (msg.code !== 0 && msg.code !== null) {
@@ -221,6 +228,7 @@ export class Chat {
 
       case 'error':
         this.hideThinking();
+        this.setWorking(false);
         if (msg.error) {
           this.addSystemMessage(msg.error);
         }
@@ -306,6 +314,7 @@ export class Chat {
     this.currentAssistantText = '';
     this.isStreaming = false;
     this.activeTasks.clear();
+    this.setWorking(false);
     this.sessionId = newSessionId;
     this.history = [];
 
