@@ -1,5 +1,5 @@
 import { renderMarkdown, addCopyButtons } from './markdown.js';
-import { renderPermissionCard, cancelPermissionCard, renderPlanCard } from './permissions.js';
+import { renderPermissionCard, cancelPermissionCard, renderPlanCard, renderQuestionCard } from './permissions.js';
 
 export class Chat {
   constructor(wsClient) {
@@ -349,6 +349,18 @@ export class Chat {
           this.showThinking(approved ? 'Implementing plan...' : 'Revising plan...');
         });
         this.messagesEl.appendChild(planCard);
+        this.scrollToBottom();
+        break;
+      }
+
+      case 'user_question': {
+        this.hideThinking();
+        this.finishStreaming();
+        const qCard = renderQuestionCard(msg, (answers) => {
+          this.wsClient.send(JSON.stringify({ type: 'question_response', answers }));
+          this.showThinking('Processing your answers...');
+        });
+        this.messagesEl.appendChild(qCard);
         this.scrollToBottom();
         break;
       }
