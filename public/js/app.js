@@ -83,6 +83,8 @@ function showApp() {
     // When resuming an existing session, skip the auto-greet
     sessionGreeted = !!sessionId;
     chat.switchSession(sessionId || null);
+    // Show chat UI immediately when switching to an existing session
+    if (sessionId) hideNoSessionPrompt();
   });
 
   // Images
@@ -216,6 +218,11 @@ function handleMessage(msg) {
       // Suppress the ding during buffer replay so switching sessions isn't noisy
       dingSuppressed = true;
       setTimeout(() => { dingSuppressed = false; }, 2000);
+      break;
+
+    // Session is still busy — sent AFTER buffer replay so spinner isn't hidden by replayed messages
+    case 'session_busy':
+      chat.showThinking('Thinking...');
       break;
 
     // Reconnect: process died while we were disconnected — auto-resume once

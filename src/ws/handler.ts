@@ -2,7 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import { parse as parseCookie } from 'cookie';
 import { timingSafeEqual } from 'crypto';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { SessionManager } from '../claude/manager.js';
 import { ClaudeProcess } from '../claude/process.js';
@@ -13,6 +13,7 @@ import { log, sessionLog } from '../logger.js';
 import { getNtfyTopic } from '../config.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
+mkdirSync(HISTORY_DIR, { recursive: true });
 
 interface WSMessage {
   type: string;
@@ -45,6 +46,14 @@ const CRASH_RETRY_WINDOW = 60_000; // reset retry count after 60s
 // Buffer recent messages per session so clients can catch up after switching
 const MESSAGE_BUFFER_SIZE = 100;
 const sessionMessageBuffers = new Map<string, string[]>();
+
+// Track session busy state: 'idle' | 'busy' | 'permission'
+export type SessionBusyState = 'idle' | 'busy' | 'permission';
+const sessionBusyStates = new Map<string, SessionBusyState>();
+
+export function getSessionBusyState(sessionId: string): SessionBusyState {
+  return sessionBusyStates.get(sessionId) || 'idle';
+}
 
 // Track which processes already have broadcast listeners attached.
 // This prevents adding duplicate listeners and ensures every process
@@ -341,8 +350,13 @@ function handleResumeSession(
     // Also add client under the requested ID in case broadcasts still use it
     addClient(actualSid, ws);
     if (actualSid !== sessionId) addClient(sessionId, ws);
-    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid }));
+    const busyState = getSessionBusyState(actualSid);
+    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid, busy: false }));
     replayBufferedMessages(ws, actualSid);
+    // Send busy status AFTER replay so it doesn't get hidden by replayed assistant messages
+    if (busyState !== 'idle') {
+      ws.send(JSON.stringify({ type: 'session_busy', sessionId: actualSid, state: busyState }));
+    }
     wireExistingProcess(ws, proc, actualSid, manager);
     return;
   }
@@ -411,8 +425,12 @@ function handleRejoinSession(
     setCurrent(proc, actualSid);
     addClient(actualSid, ws);
     if (actualSid !== sessionId) addClient(sessionId, ws);
-    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid }));
+    const busyState = getSessionBusyState(actualSid);
+    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid, busy: false }));
     replayBufferedMessages(ws, actualSid);
+    if (busyState !== 'idle') {
+      ws.send(JSON.stringify({ type: 'session_busy', sessionId: actualSid, state: busyState }));
+    }
     wireExistingProcess(ws, proc, actualSid, manager);
   } else {
     // Process is gone — tell the client so it can resume properly
@@ -462,6 +480,26 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
         // and register an alias so the process can be found by either ID.
         sessionLog('ID_DRIFT_IGNORED', { canonicalId: sessionId, driftedId: sid, name });
         manager.registerAlias(sid, sessionId!);
+      }
+    }
+
+    // Track session busy state
+    if (sessionId) {
+      if (msg.type === 'control_request') {
+        sessionBusyStates.set(sessionId, 'permission');
+      } else if (msg.type === 'result') {
+        sessionBusyStates.set(sessionId, 'idle');
+      }
+    }
+
+    // Server-side history saving: persist assistant text so switching sessions doesn't lose messages
+    if (sessionId && msg.type === 'assistant' && (msg as any).message?.content) {
+      const content = (msg as any).message.content;
+      const textParts = Array.isArray(content)
+        ? content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('')
+        : typeof content === 'string' ? content : '';
+      if (textParts) {
+        appendHistoryEntry(sessionId, { role: 'assistant', text: textParts });
       }
     }
 
@@ -580,6 +618,11 @@ function handleProcessClose(
   sessionLog('PROCESS_EXIT', { sessionId: sessionId || 'none', code, name, replacesId: replacesSessionId || 'none' });
   log('claude', `Process closed with code ${code}, sessionId=${sessionId}`);
 
+  // Clear busy state on process exit
+  if (sessionId) {
+    sessionBusyStates.set(sessionId, 'idle');
+  }
+
   if (!sessionId) {
     const fallbackSid = replacesSessionId || null;
     sessionLog('EXIT_NO_SESSION_ID', { fallbackId: fallbackSid || 'none', code });
@@ -677,6 +720,11 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
   }
   sessionLog('MESSAGE_SENT', { sessionId: sessionId || 'none', processSessionId: proc.sessionId || 'none', content: (msg.content || '').slice(0, 50) });
 
+  // Mark session as busy when user sends a message
+  if (sessionId) {
+    sessionBusyStates.set(sessionId, 'busy');
+  }
+
   const text = msg.content || '';
   const files: string[] = msg.images || [];
 
@@ -687,6 +735,10 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
       content: text,
       images: files,
     }), ws);
+    // Save user message to server-side history
+    if (text) {
+      appendHistoryEntry(sessionId, { role: 'user', text });
+    }
   }
 
   if (files.length === 0) {
@@ -737,6 +789,25 @@ function handlePermissionResponse(msg: WSMessage, proc: ClaudeProcess | null): v
   const originalInput = pendingPermissionInputs.get(msg.request_id);
   pendingPermissionInputs.delete(msg.request_id);
   proc.respondToPermission(msg.request_id, msg.allow === true, originalInput);
+}
+
+/** Append an entry to the server-side history file for a session. */
+function appendHistoryEntry(sessionId: string, entry: { role: string; text: string }): void {
+  const file = join(HISTORY_DIR, `${sessionId}.json`);
+  try {
+    let history: any[] = [];
+    if (existsSync(file)) {
+      const raw = readFileSync(file, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) history = parsed;
+    }
+    history.push(entry);
+    // Keep last 500 entries
+    if (history.length > 500) history = history.slice(-500);
+    writeFileSync(file, JSON.stringify(history));
+  } catch {
+    // Don't crash on history save failure
+  }
 }
 
 function verifyToken(token: string): boolean {
