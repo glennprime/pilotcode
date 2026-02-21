@@ -32,7 +32,7 @@ router.post('/api/auth', (req: Request, res: Response) => {
   res.cookie('pilotcode_token', token, {
     httpOnly: true,
     secure: isSecure,
-    sameSite: isSecure ? 'strict' : 'lax',
+    sameSite: 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 

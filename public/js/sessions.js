@@ -61,7 +61,7 @@ export class SessionUI {
       el.innerHTML = `
         <div class="session-item-row">
           <div class="session-item-name">
-            ${s.active ? `<span class="active-dot${s.busy ? ' busy' : ''}"></span>` : ''}${escapeHtml(s.name)}
+            ${s.busy ? '<span class="active-dot busy"></span>' : s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
           </div>
           <button class="session-rename-btn" title="Rename">&#9998;</button>
           <button class="session-delete-btn" title="Delete">&times;</button>

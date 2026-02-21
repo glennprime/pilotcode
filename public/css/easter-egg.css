@@ -1,0 +1,21 @@
+/* Easter Egg: Wandering UFO */
+
+#ee-trigger {
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+  padding: 12px;
+  margin: -12px;
+}
+
+#ee-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.ee-sprite {
+  position: absolute;
+  will-change: left, top, transform;
+}
