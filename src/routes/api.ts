@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
-import { extname, join } from 'path';
+import { basename, extname, join, resolve } from 'path';
 import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
 import { sessionBusyState, getSessionBusyState } from '../ws/handler.js';
@@ -192,6 +192,21 @@ export function createApiRouter(manager: SessionManager): Router {
     const { topic } = req.body;
     setNtfyTopic(topic || null);
     res.json({ ok: true, topic: topic || null });
+  });
+
+  // File download — serves files created/edited by Claude
+  router.get('/api/download', requireAuth, (req: Request, res: Response) => {
+    const filePath = typeof req.query.path === 'string' ? req.query.path : '';
+    if (!filePath || !filePath.startsWith('/')) {
+      res.status(400).json({ error: 'Absolute path required' });
+      return;
+    }
+    const resolved = resolve(filePath);
+    if (!existsSync(resolved) || statSync(resolved).isDirectory()) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+    res.download(resolved, basename(resolved));
   });
 
   // Health

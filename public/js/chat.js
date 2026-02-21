@@ -14,6 +14,7 @@ export class Chat {
     this.thinkingEl = null;
     this.activeTasks = new Map(); // id -> { name, description, status }
     this.renderedMessageIds = new Set(); // dedup assistant messages during buffer replay
+    this.renderedFileLinks = new Set(); // dedup file download links by message id
   }
 
   setSession(sessionId) {
@@ -304,6 +305,18 @@ export class Chat {
           this.updateThinking(toolName);
           this.renderTaskList();
         }
+
+        // Render download links for file operations (Write/Edit/NotebookEdit)
+        const msgId = msg.message?.id;
+        if (msgId && !this.renderedFileLinks.has(msgId)) {
+          const fileTools = toolUses.filter(tu =>
+            ['Write', 'Edit', 'NotebookEdit'].includes(tu.name) && tu.input?.file_path
+          );
+          if (fileTools.length > 0) {
+            this.renderedFileLinks.add(msgId);
+            this.renderFileLinks(fileTools);
+          }
+        }
         break;
       }
 
@@ -441,6 +454,40 @@ export class Chat {
     this.scrollToBottom();
   }
 
+  renderFileLinks(fileTools) {
+    // Collect unique file paths from Write/Edit/NotebookEdit tool uses
+    const seen = new Set();
+    const files = [];
+    for (const tu of fileTools) {
+      const fp = tu.input.file_path;
+      if (!seen.has(fp)) {
+        seen.add(fp);
+        const action = tu.name === 'Write' ? 'Created' : tu.name === 'NotebookEdit' ? 'Edited' : 'Modified';
+        files.push({ path: fp, action });
+      }
+    }
+    if (files.length === 0) return;
+
+    const container = document.createElement('div');
+    container.className = 'file-links';
+    for (const f of files) {
+      const filename = f.path.split('/').pop();
+      const link = document.createElement('a');
+      link.className = 'file-link';
+      link.href = `/api/download?path=${encodeURIComponent(f.path)}`;
+      link.download = filename;
+      link.title = f.path;
+      link.innerHTML = `<span class="file-link-icon">\u2913</span><span class="file-link-name">${this.escapeHtml(filename)}</span><span class="file-link-action">${f.action}</span>`;
+      container.appendChild(link);
+    }
+    this.messagesEl.appendChild(container);
+    this.scrollToBottom();
+  }
+
+  escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   startOrAppendAssistantText(text) {
     this.isStreaming = true;
     this.currentAssistantText += text;
@@ -485,6 +532,7 @@ export class Chat {
     this.isStreaming = false;
     this.activeTasks.clear();
     this.renderedMessageIds.clear();
+    this.renderedFileLinks.clear();
     this.hideThinking();
     this.setWorking(false);
     this.sessionId = newSessionId;
