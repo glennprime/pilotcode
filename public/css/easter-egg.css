@@ -127,6 +127,100 @@
   100% { transform: scale(12); opacity: 0; }
 }
 
+/* === Missile (Phase 3) === */
+.ee-missile {
+  position: absolute;
+  width: 8px;
+  height: 30px;
+  background: linear-gradient(180deg, #cc3333 0%, #888 30%, #666 100%);
+  border-radius: 4px 4px 1px 1px;
+  box-shadow: 0 0 6px 2px rgba(255, 100, 50, 0.4);
+}
+
+/* Fins at the bottom */
+.ee-missile::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -4px;
+  width: 16px;
+  height: 6px;
+  background: #555;
+  clip-path: polygon(0% 100%, 50% 0%, 100% 100%);
+}
+
+/* Flame at the bottom */
+.ee-missile::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 12px;
+  background: radial-gradient(ellipse at center top, #ff8800, #ff4400, transparent);
+  border-radius: 0 0 50% 50%;
+  animation: ee-engine-flicker 0.1s ease-in-out infinite alternate;
+}
+
+.ee-missile-trail {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 40px;
+  background: linear-gradient(180deg, rgba(200, 200, 200, 0.5), transparent);
+  border-radius: 2px;
+}
+
+.ee-missile-label {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-family: 'Arial Narrow', Arial, sans-serif;
+  font-size: 8px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 4px rgba(0,0,0,1);
+  letter-spacing: 1px;
+}
+
+@keyframes ee-missile-rise {
+  0%   { bottom: -40px; }
+  100% { bottom: calc(100% - var(--target-top) - 30px); }
+}
+
+/* Green-tinted explosion for saucer */
+.ee-explosion-green {
+  background: radial-gradient(circle, #fff 0%, #aaffcc 20%, #00ff88 50%, #009944 75%, transparent 100%);
+  animation: ee-explode 1.2s ease-out forwards;
+}
+
+/* "LOCKHEED MARTIN" victory text */
+.ee-win-text {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Arial Narrow', Arial, sans-serif;
+  font-size: 18px;
+  font-weight: bold;
+  color: #fff;
+  letter-spacing: 3px;
+  text-shadow: 0 0 10px rgba(255, 100, 50, 0.8), 0 0 20px rgba(255, 100, 50, 0.4);
+  animation: ee-text-flash 2s ease-out forwards;
+}
+
+@keyframes ee-text-flash {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  40%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
 /* === Flight path keyframes === */
 @keyframes ee-fly-right {
   0%   { transform: translateX(-100px); }
@@ -138,9 +232,10 @@
   100% { transform: translateX(calc(100vw + 100px)); }
 }
 
-@keyframes ee-fly-left {
+@keyframes ee-fly-left-stop {
   0%   { transform: translateX(calc(100vw + 100px)); }
-  100% { transform: translateX(-100px); }
+  60%  { transform: translateX(50vw); }
+  100% { transform: translateX(50vw); }
 }
 
 @keyframes ee-fly-left-jet {
