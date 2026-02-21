@@ -470,3 +470,51 @@ function updateNtfyButton(btn, enabled) {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// Dev test helpers — call from browser console
+window.__testQuestionCard = () => {
+  if (!chat) return console.warn('Chat not initialized');
+  chat.hideThinking();
+  chat.setWorking(false);
+  chat.clearInteractiveCards();
+  chat.renderQuestionCard([
+    {
+      header: 'Auth method',
+      question: 'Which authentication approach should we use?',
+      multiSelect: false,
+      options: [
+        { label: 'JWT tokens', description: 'Stateless auth with signed tokens, good for APIs' },
+        { label: 'Session cookies', description: 'Traditional server-side sessions, simpler setup' },
+        { label: 'OAuth 2.0', description: 'Delegated auth via Google/GitHub, best for SSO' },
+      ],
+    },
+    {
+      header: 'Features',
+      question: 'Which additional features do you want to enable?',
+      multiSelect: true,
+      options: [
+        { label: 'Rate limiting', description: 'Prevent abuse with request throttling' },
+        { label: 'Email verification', description: 'Require email confirmation on signup' },
+        { label: '2FA support', description: 'Optional TOTP-based two-factor authentication' },
+        { label: 'Password reset', description: 'Self-service password recovery via email' },
+      ],
+    },
+  ]);
+};
+
+window.__testPlanApproval = () => {
+  if (!chat) return console.warn('Chat not initialized');
+  chat.hideThinking();
+  chat.setWorking(false);
+  chat.clearInteractiveCards();
+  chat.addAssistantText(
+    '## Implementation Plan\n\n' +
+    '1. Create auth middleware in `src/middleware/auth.ts`\n' +
+    '2. Add JWT token generation and validation\n' +
+    '3. Create login/register API routes\n' +
+    '4. Add protected route wrapper\n' +
+    '5. Update existing endpoints to require auth\n\n' +
+    'Ready to proceed with this plan?'
+  );
+  chat.renderPlanApproval();
+};
