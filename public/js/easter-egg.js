@@ -98,18 +98,20 @@ function phase2(overlay, onDone) {
   overlay._saucerMover = saucerMover;
   overlay._saucerEl = saucerEl;
 
-  const hitTime = dur * 0.35;
+  const hitTime = dur * 0.45;
   setTimeout(() => {
     if (!overlay.isConnected) return;
 
-    const jetCenterX = window.innerWidth * 0.40 + 50;
-    const saucerFrac = hitTime / dur;
-    // Saucer stops at 50vw, but at hitTime it's still approaching
-    const saucerX = (window.innerWidth + 100) - saucerFrac * (window.innerWidth + 100 - window.innerWidth * 0.5);
+    // Read actual positions from the DOM
+    const saucerRect = saucerMover.getBoundingClientRect();
+    const jetRect = jetMover.getBoundingClientRect();
+    const saucerX = saucerRect.left + saucerRect.width / 2;
+    const jetCenterX = jetRect.left + jetRect.width / 2;
 
     const laser = document.createElement('div');
     laser.className = 'ee-laser';
-    laser.style.top = `calc(15% + 16px)`;
+    const laserTop = saucerRect.top + saucerRect.height / 2;
+    laser.style.top = `${laserTop}px`;
     laser.style.left = `${Math.min(jetCenterX, saucerX)}px`;
     laser.style.width = `${Math.abs(saucerX - jetCenterX)}px`;
     overlay.appendChild(laser);
@@ -118,7 +120,7 @@ function phase2(overlay, onDone) {
       laser.remove();
       const boom = document.createElement('div');
       boom.className = 'ee-explosion';
-      boom.style.top = `calc(16% + 10px)`;
+      boom.style.top = `${jetRect.top + jetRect.height / 2 - 5}px`;
       boom.style.left = `${jetCenterX - 5}px`;
       overlay.appendChild(boom);
       jetEl.style.visibility = 'hidden';
