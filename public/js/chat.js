@@ -203,6 +203,11 @@ export class Chat {
         }
         break;
 
+      case 'session_context_full':
+        this.hideThinking();
+        this.finishStreaming();
+        break;
+
       case 'control_request':
         this.hideThinking();
         this.finishStreaming();
