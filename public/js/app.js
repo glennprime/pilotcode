@@ -256,24 +256,22 @@ function handleMessage(msg) {
       hideNoSessionPrompt();
       break;
 
-    // Reconnect: successfully rejoined running session — buffer replay incoming
+    // Reconnect: successfully rejoined running session — buffer replay incoming.
+    // Buffer replay re-delivers old messages; assistant messages are deduped by ID
+    // so duplicates are skipped. Replayed result messages clear the spinner, but
+    // session_busy (sent AFTER replay) re-asserts it for still-busy sessions.
     case 'session_rejoined':
-      // Suppress ding and prevent replayed result messages from clearing the working state.
-      // Buffer replay will re-deliver old messages; if the session is still busy,
-      // a session_busy message arrives AFTER replay to re-assert the spinner.
       dingSuppressed = true;
-      chat.replayMode = true;
-      setTimeout(() => { dingSuppressed = false; chat.replayMode = false; }, 2000);
-      // Restore working indicator immediately if session is busy
+      setTimeout(() => { dingSuppressed = false; }, 2000);
       if (msg.busy) {
         chat.setWorking(true);
       }
       hideNoSessionPrompt();
       break;
 
-    // Session is still busy — sent AFTER buffer replay so spinner isn't hidden by replayed messages
+    // Session is still busy — sent AFTER buffer replay to re-show the spinner
+    // (replayed result messages may have cleared it during replay)
     case 'session_busy':
-      chat.replayMode = false;
       chat.showThinking('Thinking...');
       hideNoSessionPrompt();
       break;
