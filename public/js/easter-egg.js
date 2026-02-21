@@ -84,6 +84,13 @@ function runEasterEgg() {
   }
 
   requestAnimationFrame(frame);
+
+  // Safety cleanup — browsers throttle rAF in background tabs,
+  // so the animation may never reach t=1. Force removal after duration + buffer.
+  setTimeout(() => {
+    if (ufo.parentNode) ufo.remove();
+    if (overlay.parentNode) overlay.remove();
+  }, totalDuration + 2000);
 }
 
 // ────────────────────────────────────────────────
