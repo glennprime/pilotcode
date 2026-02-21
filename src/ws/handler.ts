@@ -10,6 +10,7 @@ import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DATA_DIR } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
 import { findValidSession } from '../claude/sessions.js';
 import { log, sessionLog } from '../logger.js';
+import { getNtfyTopic } from '../config.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
 
@@ -467,6 +468,17 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
     // Cache permission request inputs for later response
     if (msg.type === 'control_request' && (msg as any).request_id && (msg as any).request?.input) {
       pendingPermissionInputs.set((msg as any).request_id, (msg as any).request.input);
+    }
+
+    // Notify via ntfy on successful result
+    if (msg.type === 'result' && !(msg as any).is_error) {
+      const topic = getNtfyTopic();
+      if (topic) {
+        fetch(`https://ntfy.sh/${topic}`, {
+          method: 'POST',
+          body: `${name || 'Claude'} — Done`,
+        }).catch(() => {});
+      }
     }
 
     // Broadcast all Claude messages to every client on this session

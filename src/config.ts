@@ -23,7 +23,32 @@ export function getAuthToken(): string {
   }
 
   const token = randomBytes(16).toString('hex');
-  writeFileSync(CONFIG_FILE, JSON.stringify({ token }, null, 2));
+  const config: Record<string, unknown> = existsSync(CONFIG_FILE)
+    ? JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'))
+    : {};
+  config.token = token;
+  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
   console.log(`\n  Auth token generated: ${token}\n`);
   return token;
+}
+
+export function getNtfyTopic(): string | null {
+  if (process.env.NTFY_TOPIC) return process.env.NTFY_TOPIC;
+  if (existsSync(CONFIG_FILE)) {
+    const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
+    if (config.ntfyTopic) return config.ntfyTopic;
+  }
+  return null;
+}
+
+export function setNtfyTopic(topic: string | null): void {
+  const config: Record<string, unknown> = existsSync(CONFIG_FILE)
+    ? JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'))
+    : {};
+  if (topic) {
+    config.ntfyTopic = topic;
+  } else {
+    delete config.ntfyTopic;
+  }
+  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
