@@ -55,6 +55,22 @@ const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
 // Message types that are relevant for buffer replay on rejoin/resume
 const REPLAY_TYPES = new Set(['assistant', 'user', 'result', 'control_request', 'control_cancel_request']);
 
+// Track busy (processing) state per session
+export const sessionBusyState = new Map<string, boolean>();
+
+// Reference to WebSocketServer for global broadcasts
+let wssRef: WebSocketServer | null = null;
+
+/** Send to ALL connected WebSocket clients (not session-specific). */
+function broadcastGlobal(data: string): void {
+  if (!wssRef) return;
+  for (const client of wssRef.clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  }
+}
+
 /**
  * Tag a message with its session ID so clients can filter by session.
  * This is the core fix for session cross-contamination.
@@ -180,6 +196,8 @@ function detachFromSession(
 }
 
 export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): void {
+  wssRef = wss;
+
   // Heartbeat: ping all clients every 30s, terminate unresponsive ones
   const HEARTBEAT_INTERVAL = 30_000;
   const aliveClients = new WeakSet<WebSocket>();
@@ -489,6 +507,17 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       // Before session ID is known, send only to originating client
       originWs.send(JSON.stringify(msg));
     }
+
+    // Track busy state and broadcast to all clients
+    if (sessionId) {
+      if (msg.type === 'assistant' && !sessionBusyState.get(sessionId)) {
+        sessionBusyState.set(sessionId, true);
+        broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: true }));
+      } else if (msg.type === 'result' && sessionBusyState.get(sessionId)) {
+        sessionBusyState.set(sessionId, false);
+        broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: false }));
+      }
+    }
   });
 
   proc.on('stderr', (text: string) => {
@@ -498,6 +527,10 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
   });
 
   proc.on('close', (code: number) => {
+    if (sessionId && sessionBusyState.has(sessionId)) {
+      sessionBusyState.delete(sessionId);
+      broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: false }));
+    }
     handleProcessClose(proc, code, sessionId, replacesSessionId || undefined, name, cwd, model, manager, originWs);
   });
 
@@ -677,6 +710,12 @@ function handleUserMessage(ws: WebSocket, msg: WSMessage, proc: ClaudeProcess | 
     return;
   }
   sessionLog('MESSAGE_SENT', { sessionId: sessionId || 'none', processSessionId: proc.sessionId || 'none', content: (msg.content || '').slice(0, 50) });
+
+  // Mark session as busy when user sends a message
+  if (sessionId && !sessionBusyState.get(sessionId)) {
+    sessionBusyState.set(sessionId, true);
+    broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: true }));
+  }
 
   const text = msg.content || '';
   const files: string[] = msg.images || [];

@@ -415,6 +415,20 @@ html, body {
   cursor: default;
 }
 
+#stop-btn {
+  background: var(--red);
+  color: #fff;
+  display: none;
+}
+
+#input-area.busy #stop-btn {
+  display: flex;
+}
+
+#input-area.busy #send-btn {
+  display: none;
+}
+
 #image-btn {
   background: var(--bg-elevated);
   color: var(--text-dim);
@@ -599,6 +613,16 @@ html, body {
   border-radius: 50%;
   background: var(--green);
   margin-right: 4px;
+}
+
+.session-item .active-dot.busy {
+  background: var(--orange);
+  animation: busyPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes busyPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.6), 0 0 4px var(--orange); }
+  50% { box-shadow: 0 0 0 4px rgba(251, 146, 60, 0), 0 0 8px rgba(251, 146, 60, 0.4); }
 }
 
 /* ── New Session Modal ── */

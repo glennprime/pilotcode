@@ -72,7 +72,6 @@ function showApp() {
 
   // WebSocket
   wsClient = new WSClient(handleMessage, handleStatus);
-  wsClient.connect();
 
   // Chat
   chat = new Chat(wsClient);
@@ -89,6 +88,20 @@ function showApp() {
   imageHandler = new ImageHandler((images) => {
     renderImagePreview(images, (i) => imageHandler.removeImage(i));
   });
+
+  // Auto-resume last session before connecting
+  const lastSessionId = localStorage.getItem('pilotcode_session');
+  if (lastSessionId) {
+    sessionGreeted = true;
+    sessionUI.currentSessionId = lastSessionId;
+    chat.setSession(lastSessionId);
+    chat.loadHistory(lastSessionId);
+    wsClient.setActiveSession(lastSessionId);
+    sessionUI.setCurrentSession(lastSessionId);
+  }
+
+  // Connect WebSocket (will auto-rejoin session if activeSessionId is set)
+  wsClient.connect();
 
   // Input handling
   setupInput();
@@ -113,6 +126,10 @@ function setupInput() {
   });
 
   sendBtn.onclick = () => sendMessage();
+
+  document.getElementById('stop-btn').onclick = () => {
+    wsClient.send({ type: 'interrupt' });
+  };
 }
 
 function sendMessage() {
@@ -195,6 +212,7 @@ function handleMessage(msg) {
         sessionUI.currentSessionId = msg.newSessionId;
         chat.sessionId = msg.newSessionId;
         wsClient.setActiveSession(msg.newSessionId);
+        localStorage.setItem('pilotcode_session', msg.newSessionId);
       }
       break;
 
@@ -230,7 +248,9 @@ function handleMessage(msg) {
 
     case 'session_crashed':
       chat.addSystemMessage(msg.error || 'Session crashed. Please resume manually.');
+      chat.setWorking(false);
       sessionUI.currentSessionId = null;
+      localStorage.removeItem('pilotcode_session');
       creatingSession = false;
       break;
 
@@ -241,6 +261,11 @@ function handleMessage(msg) {
 
     // Process exited normally — no action needed (resume handles failures gracefully)
     case 'process_exit':
+      break;
+
+    // Session busy/idle status update (from any session)
+    case 'session_status':
+      sessionUI.updateSessionBusy(msg.sessionId, msg.busy);
       break;
 
     // User message from another device
