@@ -99,7 +99,8 @@
 
 @keyframes ee-projectile-fly {
   0%   { opacity: 1; transform: translateX(0); }
-  100% { opacity: 0; transform: translateX(120px); }
+  80%  { opacity: 1; transform: translateX(250px); }
+  100% { opacity: 0; transform: translateX(300px); }
 }
 
 /* === Laser === */
@@ -224,11 +225,6 @@
 /* === Flight path keyframes === */
 @keyframes ee-fly-right {
   0%   { transform: translateX(-100px); }
-  100% { transform: translateX(calc(100vw + 100px)); }
-}
-
-@keyframes ee-fly-right-trail {
-  0%   { transform: translateX(-500px); }
   100% { transform: translateX(calc(100vw + 100px)); }
 }
 
