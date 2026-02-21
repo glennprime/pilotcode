@@ -188,14 +188,18 @@ function runPhase3(overlay) {
   const H = window.innerHeight;
 
   const missile = document.createElement('div');
-  missile.className = 'ee-missile ee-sprite';
-  missile.style.left = (targetX - 4) + 'px';
+  missile.className = 'ee-sprite';
+  missile.style.width = '60px';
+  missile.style.height = '180px';
+  missile.style.left = (targetX - 30) + 'px';
+  const missileImg = document.createElement('img');
+  missileImg.src = '/img/missile.png';
+  missileImg.style.width = '100%';
+  missileImg.style.height = '100%';
+  missileImg.style.objectFit = 'contain';
+  missileImg.draggable = false;
+  missile.appendChild(missileImg);
   overlay.appendChild(missile);
-
-  const label = document.createElement('div');
-  label.className = 'ee-missile-label';
-  label.textContent = 'LOCKHEED MARTIN';
-  missile.appendChild(label);
 
   return anim(1200, (t) => {
     const eased = t * t; // ease-in
