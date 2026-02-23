@@ -358,8 +358,8 @@ export class Chat {
       case 'plan_approval': {
         this.hideThinking();
         this.finishStreaming();
-        const planCard = renderPlanCard(msg, (approved) => {
-          this.wsClient.send({ type: 'plan_response', approved });
+        const planCard = renderPlanCard(msg, (approved, notes) => {
+          this.wsClient.send({ type: 'plan_response', approved, notes: notes || '' });
           this.showThinking(approved ? 'Implementing plan...' : 'Revising plan...');
         });
         this.messagesEl.appendChild(planCard);

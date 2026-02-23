@@ -52,6 +52,9 @@ export function renderPlanCard(msg, onRespond) {
   card.innerHTML = `
     <div class="plan-header">Plan Review</div>
     <div class="plan-content"></div>
+    <div class="plan-notes">
+      <textarea class="plan-notes-input" placeholder="Notes for Claude (optional)..." rows="2"></textarea>
+    </div>
     <div class="plan-actions">
       <button class="btn-approve">Approve</button>
       <button class="btn-reject">Reject</button>
@@ -62,14 +65,22 @@ export function renderPlanCard(msg, onRespond) {
   contentEl.innerHTML = renderMarkdown(planText);
   addCopyButtons(contentEl);
 
+  const notesInput = card.querySelector('.plan-notes-input');
+
   card.querySelector('.btn-approve').onclick = () => {
-    onRespond(true);
+    const notes = notesInput.value.trim();
+    onRespond(true, notes);
+    const notesEl = card.querySelector('.plan-notes');
+    notesEl.remove();
     const actions = card.querySelector('.plan-actions');
     actions.innerHTML = '<span style="color: var(--green); font-size: 12px; font-weight: 600;">Approved</span>';
   };
 
   card.querySelector('.btn-reject').onclick = () => {
-    onRespond(false);
+    const notes = notesInput.value.trim();
+    onRespond(false, notes);
+    const notesEl = card.querySelector('.plan-notes');
+    notesEl.remove();
     const actions = card.querySelector('.plan-actions');
     actions.innerHTML = '<span style="color: var(--red); font-size: 12px; font-weight: 600;">Rejected</span>';
   };
