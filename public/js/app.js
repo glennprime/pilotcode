@@ -147,8 +147,10 @@ function setupInput() {
 
   // Double-tap Enter to send. Single Enter adds a newline normally.
   // Uses beforeinput (reliable on iOS) + keydown (desktop fallback).
+  // Both events fire for the same keypress, so we use enterHandled
+  // to ensure only ONE listener processes each Enter press.
   let lastEnterTime = 0;
-  let enterHandled = false; // prevent double-fire from both listeners
+  let enterHandled = false;
 
   function handleEnterPress(e) {
     const now = Date.now();
@@ -162,18 +164,16 @@ function setupInput() {
       }
       sendMessage();
       lastEnterTime = 0;
-      enterHandled = true;
     } else {
       lastEnterTime = now;
-      enterHandled = false;
     }
   }
 
   // beforeinput fires reliably on iOS on-screen keyboard
   input.addEventListener('beforeinput', (e) => {
     if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
-      enterHandled = false;
       handleEnterPress(e);
+      enterHandled = true; // tell keydown to skip this press
     }
   });
 
