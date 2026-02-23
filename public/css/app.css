@@ -478,6 +478,33 @@ html, body {
   font-size: 12px;
 }
 
+.plan-notes {
+  margin-top: 8px;
+}
+
+.plan-notes-input {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 40px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.plan-notes-input:focus {
+  border-color: var(--accent);
+}
+
+.plan-notes-input::placeholder {
+  color: var(--text-muted);
+}
+
 .plan-actions {
   display: flex;
   gap: 8px;

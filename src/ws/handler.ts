@@ -1006,13 +1006,14 @@ function handlePlanResponse(msg: WSMessage, proc: ClaudeProcess | null, sessionI
   if (!proc || !proc.isAlive) return;
   if (sessionId) {
     pendingInteractive.delete(sessionId);
-    log('ws', `Plan ${msg.approved ? 'approved' : 'rejected'} for session ${sessionId}`);
+    log('ws', `Plan ${msg.approved ? 'approved' : 'rejected'} for session ${sessionId}${msg.notes ? ` (notes: ${msg.notes})` : ''}`);
     setSessionBusy(sessionId, 'busy');
   }
+  const notes = msg.notes ? `\n\nUser notes: ${msg.notes}` : '';
   if (msg.approved) {
-    proc.sendMessage('Plan approved by the user. Proceed with implementing the plan now. Do not call ExitPlanMode again — it has already been handled.');
+    proc.sendMessage(`Plan approved by the user.${notes}\n\nProceed with implementing the plan now. Do not call ExitPlanMode again — it has already been handled.`);
   } else {
-    proc.sendMessage('Plan rejected by the user. Please revise your approach and present an updated plan. Do not call ExitPlanMode again until you have a revised plan.');
+    proc.sendMessage(`Plan rejected by the user.${notes}\n\nPlease revise your approach and present an updated plan. Do not call ExitPlanMode again until you have a revised plan.`);
   }
 }
 
