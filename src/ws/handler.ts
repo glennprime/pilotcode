@@ -455,8 +455,9 @@ function handleResumeSession(
     });
 
     // Claude CLI (2.1.49+) won't emit system init until first stdin message.
-    // For resume, send a brief continuation prompt to kick-start it.
-    proc.sendMessage('continue');
+    // Send a neutral init message — NOT "continue" which causes Claude to
+    // resume its last task without user approval.
+    proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
   } else {
     // No valid session found — start fresh in the same cwd with same model
     sessionLog('RESUME_FRESH', { requestedId: sessionId, name, cwd, model: model || 'default', reason: 'no_valid_session' });
