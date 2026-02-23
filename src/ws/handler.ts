@@ -64,6 +64,10 @@ const sessionMessageBuffers = new Map<string, string[]>();
 export type SessionBusyState = 'idle' | 'busy' | 'permission';
 const sessionBusyStates = new Map<string, SessionBusyState>();
 
+// Track whether a session was busy when its process last exited.
+// Used to decide whether to tell Claude to continue or wait on resume.
+const sessionExitWasBusy = new Map<string, boolean>();
+
 export function getSessionBusyState(sessionId: string): SessionBusyState {
   return sessionBusyStates.get(sessionId) || 'idle';
 }
@@ -455,9 +459,18 @@ function handleResumeSession(
     });
 
     // Claude CLI (2.1.49+) won't emit system init until first stdin message.
-    // Send a neutral init message — NOT "continue" which causes Claude to
-    // resume its last task without user approval.
-    proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
+    // Choose message based on whether the session was busy when it last exited:
+    // - If busy: the session was interrupted mid-work → tell Claude to continue
+    // - If idle: the session was dormant → tell Claude to wait for instructions
+    const wasBusy = sessionExitWasBusy.get(sessionId) || false;
+    sessionExitWasBusy.delete(sessionId);
+    if (wasBusy) {
+      sessionLog('RESUME_CONTINUE', { sessionId: validId, reason: 'was_busy_at_exit' });
+      proc.sendMessage('The session was interrupted. Continue where you left off.');
+    } else {
+      sessionLog('RESUME_WAIT', { sessionId: validId, reason: 'was_idle_at_exit' });
+      proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
+    }
   } else {
     // No valid session found — start fresh in the same cwd with same model
     sessionLog('RESUME_FRESH', { requestedId: sessionId, name, cwd, model: model || 'default', reason: 'no_valid_session' });
@@ -834,8 +847,11 @@ function handleProcessClose(
   sessionLog('PROCESS_EXIT', { sessionId: sessionId || 'none', code, name, replacesId: replacesSessionId || 'none' });
   log('claude', `Process closed with code ${code}, sessionId=${sessionId}`);
 
-  // Clear busy state on process exit (broadcast already done in close handler)
+  // Record whether the session was busy at exit time — used by resume logic
+  // to decide whether to tell Claude to continue or wait.
   if (sessionId) {
+    const wasBusy = sessionBusyStates.get(sessionId);
+    sessionExitWasBusy.set(sessionId, wasBusy === 'busy' || wasBusy === 'permission');
     sessionBusyStates.set(sessionId, 'idle');
   }
   // Note: the close listener on the process already calls setSessionBusy('idle')
@@ -893,6 +909,10 @@ function handleProcessClose(
           setCurrent: (p, sid) => { manager.registerProcess(sid, p); },
           originWs: null,
         });
+
+        // Claude CLI (2.1.49+) won't emit system init until first stdin message.
+        // The session crashed mid-work, so tell Claude to continue.
+        newProc.sendMessage('The session crashed and was auto-resumed. Continue where you left off.');
       }, delay);
       return;
     }
