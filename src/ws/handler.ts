@@ -770,6 +770,14 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       }
     }
 
+    // If an assistant message reaches here (past ExitPlanMode interception),
+    // Claude has moved on from plan mode — clear the auto-approve flag so
+    // a genuinely new plan later in the session will show the UI card.
+    if (sessionId && msg.type === 'assistant' && planRecentlyApproved.has(sessionId)) {
+      planRecentlyApproved.delete(sessionId);
+      log('ws', `Cleared planRecentlyApproved for session ${sessionId} (Claude moved past plan mode)`);
+    }
+
     // Broadcast all Claude messages to every client on this session
     if (sessionId) {
       broadcastAll(sessionId, JSON.stringify(msg));
