@@ -1,4 +1,4 @@
-import { renderMarkdown, addCopyButtons } from './markdown.js';
+import { renderMarkdown, addCopyButtons, linkifyFilePaths } from './markdown.js';
 import { renderPermissionCard, cancelPermissionCard, renderPlanCard, renderQuestionCard } from './permissions.js';
 
 export class Chat {
@@ -59,6 +59,7 @@ export class Chat {
     content.className = 'content';
     content.innerHTML = renderMarkdown(text);
     addCopyButtons(content);
+    linkifyFilePaths(content);
     el.appendChild(content);
     this.messagesEl.appendChild(el);
   }
@@ -504,6 +505,7 @@ export class Chat {
     const content = this.currentAssistantEl.querySelector('.content');
     content.innerHTML = renderMarkdown(this.currentAssistantText);
     addCopyButtons(content);
+    linkifyFilePaths(content);
   }
 
   finishStreaming() {
@@ -512,6 +514,7 @@ export class Chat {
       if (content) {
         content.innerHTML = renderMarkdown(this.currentAssistantText);
         addCopyButtons(content);
+        linkifyFilePaths(content);
       }
       if (this.currentAssistantText) {
         this.pushHistory({ role: 'assistant', text: this.currentAssistantText });

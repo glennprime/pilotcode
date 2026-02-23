@@ -1308,6 +1308,29 @@ html, body {
   font-family: var(--font-sans);
 }
 
+/* ── Inline File Path Links ── */
+a.file-path-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--accent-dim);
+  transition: border-color 0.15s;
+  cursor: pointer;
+}
+
+a.file-path-link:hover {
+  border-bottom-style: solid;
+  border-bottom-color: var(--accent);
+}
+
+a.file-path-link code {
+  color: var(--accent);
+}
+
+a.file-path-link.bare {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
 /* Image in messages */
 .message img.chat-image {
   max-width: 100%;
