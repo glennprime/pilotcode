@@ -78,7 +78,7 @@ export class SessionUI {
 
       // Tap anywhere else to switch session
       el.onclick = () => {
-        this.resumeSession(s.id, s.name);
+        this.resumeSession(s.id, s.name, s.cwd);
         this.closeDrawer();
       };
 
@@ -349,14 +349,15 @@ export class SessionUI {
     this.onSessionChange(name, null);
   }
 
-  resumeSession(sessionId, name) {
+  resumeSession(sessionId, name, cwd) {
     if (sessionId === this.currentSessionId) return; // already active
     this.currentSessionId = sessionId;
     localStorage.setItem('pilotcode_session', sessionId);
+    if (cwd) localStorage.setItem('pilotcode_session_cwd', cwd);
     this.wsClient.setActiveSession(sessionId);
     this.wsClient.send({ type: 'resume_session', sessionId });
     document.getElementById('session-name').textContent = name || sessionId.slice(0, 8);
-    this.onSessionChange(name, sessionId);
+    this.onSessionChange(name, sessionId, cwd);
   }
 
   setCurrentSession(sessionId) {

@@ -80,10 +80,11 @@ function showApp() {
   chat = new Chat(wsClient);
 
   // Sessions
-  sessionUI = new SessionUI(wsClient, (name, sessionId) => {
+  sessionUI = new SessionUI(wsClient, (name, sessionId, cwd) => {
     // Only auto-greet brand new sessions (sessionId is null)
     // When resuming an existing session, skip the auto-greet
     sessionGreeted = !!sessionId;
+    if (cwd) chat.sessionCwd = cwd;
     chat.switchSession(sessionId || null);
     // Show chat UI immediately when switching to an existing session
     if (sessionId) hideNoSessionPrompt();
@@ -100,6 +101,7 @@ function showApp() {
     sessionGreeted = true;
     sessionUI.currentSessionId = lastSessionId;
     chat.setSession(lastSessionId);
+    chat.sessionCwd = localStorage.getItem('pilotcode_session_cwd') || '';
     chat.loadHistory(lastSessionId);
     wsClient.setActiveSession(lastSessionId);
     sessionUI.setCurrentSession(lastSessionId);

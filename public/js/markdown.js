@@ -111,15 +111,28 @@ export function addCopyButtons(container) {
   });
 }
 
-/** Convert absolute file paths in rendered HTML into clickable download links. */
-export function linkifyFilePaths(container) {
+/** Resolve a file path to an absolute download URL path. */
+function resolveDownloadPath(filePath, cwd) {
+  if (filePath.startsWith('/')) return filePath;
+  if (cwd) return cwd.replace(/\/$/, '') + '/' + filePath;
+  return filePath; // can't resolve — try anyway
+}
+
+// Absolute path: /at-least/one-segment/file
+const ABS_PATH_RE = /^\/(?:[\w.@~+-]+\/)+[\w.@~+-]+$/;
+// Relative path: at-least/one-segment/file.ext (must have extension to avoid false positives)
+const REL_PATH_RE = /^(?:[\w.@~+-]+\/)+[\w.@~+-]+\.\w+$/;
+
+/** Convert file paths in rendered HTML into clickable download links. */
+export function linkifyFilePaths(container, cwd) {
   // 1) Inline <code> elements (not inside <pre>) containing a file path
   container.querySelectorAll('code').forEach(code => {
     if (code.closest('pre') || code.closest('a')) return;
     const text = code.textContent.trim();
-    if (/^\/(?:[\w.@~+-]+\/)+[\w.@~+-]+$/.test(text)) {
+    if (ABS_PATH_RE.test(text) || REL_PATH_RE.test(text)) {
+      const resolved = resolveDownloadPath(text, cwd);
       const link = document.createElement('a');
-      link.href = `/api/download?path=${encodeURIComponent(text)}`;
+      link.href = `/api/download?path=${encodeURIComponent(resolved)}`;
       link.download = text.split('/').pop();
       link.title = `Download ${text}`;
       link.className = 'file-path-link';
@@ -129,7 +142,8 @@ export function linkifyFilePaths(container) {
   });
 
   // 2) Bare file paths in text nodes (outside <a>, <pre>, <code>)
-  const pathRe = /(\/(?:[\w.@~+-]+\/){2,}[\w.@~+-]+)/g;
+  // Match absolute paths (3+ segments) and relative paths with extension (2+ segments)
+  const pathRe = /(\/(?:[\w.@~+-]+\/){2,}[\w.@~+-]+|(?:[\w.@~+-]+\/)+[\w.@~+-]+\.\w+)/g;
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const textNodes = [];
   while (walker.nextNode()) textNodes.push(walker.currentNode);
@@ -148,8 +162,9 @@ export function linkifyFilePaths(container) {
         frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
       }
       const filePath = match[1];
+      const resolved = resolveDownloadPath(filePath, cwd);
       const link = document.createElement('a');
-      link.href = `/api/download?path=${encodeURIComponent(filePath)}`;
+      link.href = `/api/download?path=${encodeURIComponent(resolved)}`;
       link.download = filePath.split('/').pop();
       link.title = `Download ${filePath}`;
       link.className = 'file-path-link bare';

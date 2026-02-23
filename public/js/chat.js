@@ -15,6 +15,7 @@ export class Chat {
     this.activeTasks = new Map(); // id -> { name, description, status }
     this.renderedMessageIds = new Set(); // dedup assistant messages during buffer replay
     this.renderedFileLinks = new Set(); // dedup file download links by message id
+    this.sessionCwd = ''; // working directory for resolving relative paths
   }
 
   setSession(sessionId) {
@@ -59,7 +60,7 @@ export class Chat {
     content.className = 'content';
     content.innerHTML = renderMarkdown(text);
     addCopyButtons(content);
-    linkifyFilePaths(content);
+    linkifyFilePaths(content, this.sessionCwd);
     el.appendChild(content);
     this.messagesEl.appendChild(el);
   }
@@ -505,7 +506,7 @@ export class Chat {
     const content = this.currentAssistantEl.querySelector('.content');
     content.innerHTML = renderMarkdown(this.currentAssistantText);
     addCopyButtons(content);
-    linkifyFilePaths(content);
+    linkifyFilePaths(content, this.sessionCwd);
   }
 
   finishStreaming() {
@@ -514,7 +515,7 @@ export class Chat {
       if (content) {
         content.innerHTML = renderMarkdown(this.currentAssistantText);
         addCopyButtons(content);
-        linkifyFilePaths(content);
+        linkifyFilePaths(content, this.sessionCwd);
       }
       if (this.currentAssistantText) {
         this.pushHistory({ role: 'assistant', text: this.currentAssistantText });
