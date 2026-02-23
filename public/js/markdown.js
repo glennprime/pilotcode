@@ -141,7 +141,45 @@ export function linkifyFilePaths(container, cwd) {
     }
   });
 
-  // 2) Bare file paths in text nodes (outside <a>, <pre>, <code>)
+  // 2) Absolute file paths inside <pre><code> blocks (line-by-line)
+  //    Only match absolute paths to avoid false positives in actual code.
+  container.querySelectorAll('pre code').forEach(code => {
+    const preWalker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+    const preTextNodes = [];
+    while (preWalker.nextNode()) preTextNodes.push(preWalker.currentNode);
+
+    for (const node of preTextNodes) {
+      if (node.parentElement?.closest('a')) continue;
+      const text = node.textContent;
+      const prePathRe = /(\/(?:[\w.@~+-]+\/)+[\w.@~+-]+)/g;
+      if (!prePathRe.test(text)) continue;
+      prePathRe.lastIndex = 0;
+
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0;
+      let match;
+      while ((match = prePathRe.exec(text)) !== null) {
+        if (match.index > lastIdx) {
+          frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+        }
+        const filePath = match[1];
+        const link = document.createElement('a');
+        link.href = `/api/download?path=${encodeURIComponent(filePath)}`;
+        link.download = filePath.split('/').pop();
+        link.title = `Download ${filePath}`;
+        link.className = 'file-path-link pre-path';
+        link.textContent = filePath;
+        frag.appendChild(link);
+        lastIdx = prePathRe.lastIndex;
+      }
+      if (lastIdx < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+      }
+      node.parentNode.replaceChild(frag, node);
+    }
+  });
+
+  // 3) Bare file paths in text nodes (outside <a>, <pre>, <code>)
   // Match absolute paths (3+ segments) and relative paths with extension (2+ segments)
   const pathRe = /(\/(?:[\w.@~+-]+\/){2,}[\w.@~+-]+|(?:[\w.@~+-]+\/)+[\w.@~+-]+\.\w+)/g;
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
