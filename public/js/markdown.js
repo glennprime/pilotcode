@@ -111,6 +111,59 @@ export function addCopyButtons(container) {
   });
 }
 
+/** Convert absolute file paths in rendered HTML into clickable download links. */
+export function linkifyFilePaths(container) {
+  // 1) Inline <code> elements (not inside <pre>) containing a file path
+  container.querySelectorAll('code').forEach(code => {
+    if (code.closest('pre') || code.closest('a')) return;
+    const text = code.textContent.trim();
+    if (/^\/(?:[\w.@~+-]+\/)+[\w.@~+-]+$/.test(text)) {
+      const link = document.createElement('a');
+      link.href = `/api/download?path=${encodeURIComponent(text)}`;
+      link.download = text.split('/').pop();
+      link.title = `Download ${text}`;
+      link.className = 'file-path-link';
+      code.parentNode.insertBefore(link, code);
+      link.appendChild(code);
+    }
+  });
+
+  // 2) Bare file paths in text nodes (outside <a>, <pre>, <code>)
+  const pathRe = /(\/(?:[\w.@~+-]+\/){2,}[\w.@~+-]+)/g;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  for (const node of textNodes) {
+    if (node.parentElement?.closest('a, pre, code')) continue;
+    const text = node.textContent;
+    if (!pathRe.test(text)) continue;
+    pathRe.lastIndex = 0;
+
+    const frag = document.createDocumentFragment();
+    let lastIdx = 0;
+    let match;
+    while ((match = pathRe.exec(text)) !== null) {
+      if (match.index > lastIdx) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+      }
+      const filePath = match[1];
+      const link = document.createElement('a');
+      link.href = `/api/download?path=${encodeURIComponent(filePath)}`;
+      link.download = filePath.split('/').pop();
+      link.title = `Download ${filePath}`;
+      link.className = 'file-path-link bare';
+      link.textContent = filePath;
+      frag.appendChild(link);
+      lastIdx = pathRe.lastIndex;
+    }
+    if (lastIdx < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+    }
+    node.parentNode.replaceChild(frag, node);
+  }
+}
+
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
