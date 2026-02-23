@@ -145,8 +145,28 @@ function setupInput() {
     sendBtn.disabled = !input.value.trim() && imageHandler.pendingImages.length === 0;
   });
 
-  // No Enter-to-send — on mobile (iPhone) autocorrect/suggestions
-  // trigger Enter unexpectedly. Only the send button submits.
+  // Double-tap Enter to send. Single Enter adds a newline normally.
+  // This avoids accidental sends from iPhone autocorrect while still
+  // providing a keyboard shortcut for intentional sends.
+  let lastEnterTime = 0;
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      const now = Date.now();
+      if (now - lastEnterTime < 350) {
+        e.preventDefault();
+        // Remove the newline that the first Enter inserted
+        const val = input.value;
+        const pos = input.selectionStart;
+        if (pos > 0 && val[pos - 1] === '\n') {
+          input.value = val.slice(0, pos - 1) + val.slice(pos);
+        }
+        sendMessage();
+        lastEnterTime = 0;
+      } else {
+        lastEnterTime = now;
+      }
+    }
+  });
 
   sendBtn.onclick = () => sendMessage();
 
