@@ -143,12 +143,8 @@ function setupInput() {
     sendBtn.disabled = !input.value.trim() && imageHandler.pendingImages.length === 0;
   });
 
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
+  // No Enter-to-send — on mobile (iPhone) autocorrect/suggestions
+  // trigger Enter unexpectedly. Only the send button submits.
 
   sendBtn.onclick = () => sendMessage();
 
