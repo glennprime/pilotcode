@@ -166,7 +166,7 @@ function hideNoSessionPrompt() {
   document.getElementById('input-area').style.display = '';
   // Scroll to bottom after messages become visible (loadHistory may have
   // called scrollToBottom while the div was hidden, which is a no-op)
-  if (chat) chat.scrollToBottom();
+  if (chat) chat.forceScrollToBottom();
 }
 
 function sendMessage() {
