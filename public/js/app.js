@@ -168,6 +168,9 @@ function hideNoSessionPrompt() {
   document.getElementById('no-session-prompt').classList.remove('active');
   document.getElementById('messages').style.display = '';
   document.getElementById('input-area').style.display = '';
+  // Scroll to bottom after messages become visible (loadHistory may have
+  // called scrollToBottom while the div was hidden, which is a no-op)
+  if (chat) chat.scrollToBottom();
 }
 
 function sendMessage() {
@@ -263,6 +266,13 @@ function handleMessage(msg) {
     case 'session_rejoined':
       dingSuppressed = true;
       setTimeout(() => { dingSuppressed = false; }, 2000);
+      // Sync session ID — server may have resolved to a different ID via alias chain
+      if (msg.sessionId && msg.sessionId !== wsClient.activeSessionId) {
+        wsClient.setActiveSession(msg.sessionId);
+        chat.sessionId = msg.sessionId;
+        sessionUI.currentSessionId = msg.sessionId;
+        localStorage.setItem('pilotcode_session', msg.sessionId);
+      }
       if (msg.busy) {
         chat.setWorking(true);
       }

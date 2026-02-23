@@ -34,7 +34,11 @@ export class WSClient {
       try {
         const msg = JSON.parse(e.data);
 
-        // Strip internal session tag before passing to the app.
+        // Filter out messages from other sessions to prevent cross-contamination.
+        // Messages without _sid (direct sends like session_rejoined) always pass through.
+        if (msg._sid && this.activeSessionId && msg._sid !== this.activeSessionId) {
+          return; // wrong session — discard
+        }
         delete msg._sid;
 
         this.onMessage(msg);
