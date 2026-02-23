@@ -40,7 +40,7 @@ export class Chat {
     el.innerHTML = html;
 
     this.messagesEl.appendChild(el);
-    this.scrollToBottom();
+    this.forceScrollToBottom();
 
     const entry = { role: 'user', text };
     if (images?.length) {
@@ -151,7 +151,7 @@ export class Chat {
     if (!questions || questions.length === 0) {
       // No structured questions — just transition to input mode
       this.messagesEl.appendChild(createSystemNote('Claude is waiting for your input.'));
-      this.scrollToBottom();
+      this.forceScrollToBottom();
       return;
     }
 
@@ -216,7 +216,7 @@ export class Chat {
 
       this.messagesEl.appendChild(card);
     }
-    this.scrollToBottom();
+    this.forceScrollToBottom();
     document.getElementById('message-input').focus();
   }
 
@@ -257,7 +257,7 @@ export class Chat {
     card.appendChild(actions);
 
     this.messagesEl.appendChild(card);
-    this.scrollToBottom();
+    this.forceScrollToBottom();
   }
 
   handleSDKMessage(msg, onPermissionResponse) {
@@ -362,7 +362,7 @@ export class Chat {
           this.showThinking(approved ? 'Implementing plan...' : 'Revising plan...');
         });
         this.messagesEl.appendChild(planCard);
-        this.scrollToBottom();
+        this.forceScrollToBottom();
         break;
       }
 
@@ -374,7 +374,7 @@ export class Chat {
           this.showThinking('Processing your answers...');
         });
         this.messagesEl.appendChild(qCard);
-        this.scrollToBottom();
+        this.forceScrollToBottom();
         break;
       }
 
@@ -386,7 +386,7 @@ export class Chat {
           this.showThinking('Waiting for Claude...');
         });
         this.messagesEl.appendChild(card);
-        this.scrollToBottom();
+        this.forceScrollToBottom();
         break;
 
       case 'control_cancel_request':
@@ -555,7 +555,7 @@ export class Chat {
     // buried above the chat. Re-append it to move it to the bottom.
     if (this.thinkingEl) {
       this.messagesEl.appendChild(this.thinkingEl);
-      this.scrollToBottom();
+      this.forceScrollToBottom();
     }
   }
 
@@ -621,7 +621,7 @@ export class Chat {
             break;
         }
       }
-      this.scrollToBottom();
+      this.forceScrollToBottom();
     } catch { /* offline */ }
   }
 
@@ -641,7 +641,20 @@ export class Chat {
     } catch {}
   }
 
+  /** Returns true if the user is near the bottom of the chat (within 150px). */
+  isNearBottom() {
+    const el = this.messagesEl;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }
+
+  /** Scroll to bottom only if the user hasn't scrolled up to read history. */
   scrollToBottom() {
+    if (!this.isNearBottom()) return;
+    this.forceScrollToBottom();
+  }
+
+  /** Unconditionally scroll to bottom (used after session switch, history load, etc.). */
+  forceScrollToBottom() {
     requestAnimationFrame(() => {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     });
