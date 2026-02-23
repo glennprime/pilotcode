@@ -51,6 +51,11 @@ const pendingInteractive = new Map<string, PendingInteractive>();
 // Known error strings the CLI returns for interactive tools in stream-json mode
 const INTERACTIVE_ERRORS = new Set(['Exit plan mode?', 'Answer questions?', 'Entered plan mode']);
 
+// Track sessions where a plan was recently approved. On resume, Claude may see
+// plan mode is still active and call ExitPlanMode again — auto-approve it instead
+// of showing a redundant Plan Review card.
+const planRecentlyApproved = new Set<string>();
+
 // Track crash retry state per session
 const crashRetries = new Map<string, { count: number; firstAttempt: number }>();
 const MAX_CRASH_RETRIES = 3;
@@ -692,6 +697,22 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
         }
 
         if (exitPlanBlock) {
+          // Auto-approve if plan was already approved (e.g., plan mode re-activated on resume)
+          if (sessionId && planRecentlyApproved.has(sessionId)) {
+            planRecentlyApproved.delete(sessionId);
+            pendingInteractive.set(sessionId, { type: 'plan', cardShown: true, interrupted: true });
+            log('ws', `ExitPlanMode auto-approved (plan already approved) for session ${sessionId}`);
+            proc.interrupt();
+            setTimeout(() => {
+              if (sessionId) {
+                pendingInteractive.delete(sessionId);
+                setSessionBusy(sessionId, 'busy');
+              }
+              proc.sendMessage('Plan approved by the user. Proceed with implementing the plan now. Do not call ExitPlanMode again — it has already been handled.');
+            }, 500);
+            return;
+          }
+
           const pending = pendingInteractive.get(sessionId);
           if (!pending || !pending.cardShown) {
             // First time — show the plan approval card, then interrupt to stop retry loop
@@ -1037,6 +1058,7 @@ function handlePlanResponse(msg: WSMessage, proc: ClaudeProcess | null, sessionI
   }
   const notes = msg.notes ? `\n\nUser notes: ${msg.notes}` : '';
   if (msg.approved) {
+    if (sessionId) planRecentlyApproved.add(sessionId);
     proc.sendMessage(`Plan approved by the user.${notes}\n\nProceed with implementing the plan now. Do not call ExitPlanMode again — it has already been handled.`);
   } else {
     proc.sendMessage(`Plan rejected by the user.${notes}\n\nPlease revise your approach and present an updated plan. Do not call ExitPlanMode again until you have a revised plan.`);
