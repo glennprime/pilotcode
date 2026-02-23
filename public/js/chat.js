@@ -359,7 +359,7 @@ export class Chat {
         this.hideThinking();
         this.finishStreaming();
         const planCard = renderPlanCard(msg, (approved) => {
-          this.wsClient.send(JSON.stringify({ type: 'plan_response', approved }));
+          this.wsClient.send({ type: 'plan_response', approved });
           this.showThinking(approved ? 'Implementing plan...' : 'Revising plan...');
         });
         this.messagesEl.appendChild(planCard);
@@ -371,7 +371,7 @@ export class Chat {
         this.hideThinking();
         this.finishStreaming();
         const qCard = renderQuestionCard(msg, (answers) => {
-          this.wsClient.send(JSON.stringify({ type: 'question_response', answers }));
+          this.wsClient.send({ type: 'question_response', answers });
           this.showThinking('Processing your answers...');
         });
         this.messagesEl.appendChild(qCard);
