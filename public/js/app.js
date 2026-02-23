@@ -146,42 +146,24 @@ function setupInput() {
   });
 
   // Double-tap Enter to send. Single Enter adds a newline normally.
-  // Uses beforeinput (reliable on iOS) + keydown (desktop fallback).
-  // Both events fire for the same keypress, so we use enterHandled
-  // to ensure only ONE listener processes each Enter press.
+  // Single keydown listener — no coordination issues between multiple events.
   let lastEnterTime = 0;
-  let enterHandled = false;
-
-  function handleEnterPress(e) {
-    const now = Date.now();
-    if (now - lastEnterTime < 500) {
-      e.preventDefault();
-      // Remove the newline that the first Enter inserted
-      const val = input.value;
-      const pos = input.selectionStart;
-      if (pos > 0 && val[pos - 1] === '\n') {
-        input.value = val.slice(0, pos - 1) + val.slice(pos);
-      }
-      sendMessage();
-      lastEnterTime = 0;
-    } else {
-      lastEnterTime = now;
-    }
-  }
-
-  // beforeinput fires reliably on iOS on-screen keyboard
-  input.addEventListener('beforeinput', (e) => {
-    if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
-      handleEnterPress(e);
-      enterHandled = true; // tell keydown to skip this press
-    }
-  });
-
-  // keydown fallback for desktop and hardware keyboards
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      if (enterHandled) { enterHandled = false; return; }
-      handleEnterPress(e);
+      const now = Date.now();
+      if (now - lastEnterTime < 500) {
+        e.preventDefault();
+        // Remove the newline that the first Enter inserted
+        const val = input.value;
+        const pos = input.selectionStart;
+        if (pos > 0 && val[pos - 1] === '\n') {
+          input.value = val.slice(0, pos - 1) + val.slice(pos);
+        }
+        sendMessage();
+        lastEnterTime = 0;
+      } else {
+        lastEnterTime = now;
+      }
     }
   });
 
