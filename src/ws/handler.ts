@@ -460,16 +460,22 @@ function handleResumeSession(
 
     // Claude CLI (2.1.49+) won't emit system init until first stdin message.
     // Choose message based on whether the session was busy when it last exited:
-    // - If busy: the session was interrupted mid-work → tell Claude to continue
-    // - If idle: the session was dormant → tell Claude to wait for instructions
-    const wasBusy = sessionExitWasBusy.get(sessionId) || false;
+    // - true:      session was interrupted mid-work → tell Claude to continue
+    // - false:     session was idle/completed → tell Claude to wait
+    // - undefined: no data (server restarted, lost state) → let Claude decide
+    const wasBusy = sessionExitWasBusy.get(sessionId);
     sessionExitWasBusy.delete(sessionId);
-    if (wasBusy) {
+    if (wasBusy === true) {
       sessionLog('RESUME_CONTINUE', { sessionId: validId, reason: 'was_busy_at_exit' });
       proc.sendMessage('The session was interrupted. Continue where you left off.');
-    } else {
+    } else if (wasBusy === false) {
       sessionLog('RESUME_WAIT', { sessionId: validId, reason: 'was_idle_at_exit' });
       proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
+    } else {
+      // No exit state data — e.g. after server restart. Let Claude decide
+      // based on its conversation history rather than guessing wrong.
+      sessionLog('RESUME_AUTO', { sessionId: validId, reason: 'no_exit_state' });
+      proc.sendMessage('Session resumed. Check your conversation history: if you were in the middle of a task, continue where you left off. If you had completed your work or were waiting for input, acknowledge briefly and wait for instructions.');
     }
   } else {
     // No valid session found — start fresh in the same cwd with same model
