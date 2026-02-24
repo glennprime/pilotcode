@@ -697,9 +697,12 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
         }
 
         if (exitPlanBlock) {
-          // Auto-approve if plan was already approved (e.g., plan mode re-activated on resume)
+          // Auto-approve if plan was already approved (e.g., plan mode re-activated on resume).
+          // Keep planRecentlyApproved set — don't delete it here. ExitPlanMode can't actually
+          // resolve in stream-json mode, so Claude may retry multiple times. The flag is only
+          // cleared by the debounce on line ~776 when a normal assistant message arrives,
+          // indicating Claude has moved past plan mode.
           if (sessionId && planRecentlyApproved.has(sessionId)) {
-            planRecentlyApproved.delete(sessionId);
             pendingInteractive.set(sessionId, { type: 'plan', cardShown: true, interrupted: true });
             log('ws', `ExitPlanMode auto-approved (plan already approved) for session ${sessionId}`);
             proc.interrupt();
