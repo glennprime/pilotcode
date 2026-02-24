@@ -16,6 +16,24 @@ export class Chat {
     this.renderedMessageIds = new Set(); // dedup assistant messages during buffer replay
     this.renderedFileLinks = new Set(); // dedup file download links by message id
     this.sessionCwd = ''; // working directory for resolving relative paths
+
+    // Callbacks for user message actions (wired by app.js)
+    this.onResend = null; // (text) => void
+    this.onEdit = null;   // (text) => void
+
+    // Event delegation for resend/edit buttons
+    this.messagesEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.msg-action-btn');
+      if (!btn) return;
+      const msgEl = btn.closest('.message.user');
+      if (!msgEl) return;
+      const text = msgEl.dataset.text || '';
+      if (btn.classList.contains('msg-resend') && this.onResend) {
+        this.onResend(text);
+      } else if (btn.classList.contains('msg-edit') && this.onEdit) {
+        this.onEdit(text);
+      }
+    });
   }
 
   setSession(sessionId) {
@@ -26,20 +44,38 @@ export class Chat {
     document.getElementById('input-area').classList.toggle('busy', active);
   }
 
-  addUserMessage(text, images) {
+  /**
+   * Build a user message DOM element with action buttons (resend / edit).
+   * Used by both addUserMessage() and loadHistory() to avoid duplication.
+   * @param {string} text - raw message text
+   * @param {Array} images - live image objects ({objectUrl, filename}) OR history filename strings
+   */
+  _createUserMessageEl(text, images) {
     const el = document.createElement('div');
     el.className = 'message user';
+    el.dataset.text = text;
 
     let html = '';
     if (images?.length) {
       for (const img of images) {
-        const src = img.objectUrl || (img.filename ? `/data/images/${img.filename}` : '');
+        // Live images have objectUrl; history images are plain filename strings
+        const src = typeof img === 'string'
+          ? `/data/images/${img}`
+          : (img.objectUrl || (img.filename ? `/data/images/${img.filename}` : ''));
         if (src) html += `<img class="chat-image" src="${src}">`;
       }
     }
-    html += escapeHtml(text);
+    html += `<span class="user-text">${escapeHtml(text)}</span>`;
+    html += `<div class="msg-actions">`;
+    html += `<button class="msg-action-btn msg-edit" title="Edit">&#9998;</button>`;
+    html += `<button class="msg-action-btn msg-resend" title="Resend">&#8635;</button>`;
+    html += `</div>`;
     el.innerHTML = html;
+    return el;
+  }
 
+  addUserMessage(text, images) {
+    const el = this._createUserMessageEl(text, images);
     this.messagesEl.appendChild(el);
     this.forceScrollToBottom();
 
@@ -601,16 +637,7 @@ export class Chat {
       for (const entry of this.history) {
         switch (entry.role) {
           case 'user': {
-            const el = document.createElement('div');
-            el.className = 'message user';
-            let html = '';
-            if (entry.images?.length) {
-              for (const f of entry.images) {
-                html += `<img class="chat-image" src="/data/images/${f}">`;
-              }
-            }
-            html += escapeHtml(entry.text || '');
-            el.innerHTML = html;
+            const el = this._createUserMessageEl(entry.text || '', entry.images);
             this.messagesEl.appendChild(el);
             break;
           }

@@ -79,6 +79,19 @@ function showApp() {
   // Chat
   chat = new Chat(wsClient);
 
+  // Resend / Edit callbacks on user messages
+  chat.onResend = (text) => doSend(text, []);
+  chat.onEdit = (text) => {
+    const input = document.getElementById('message-input');
+    input.value = text;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    document.getElementById('send-btn').disabled = !text.trim();
+    input.focus();
+    // Place cursor at the end
+    input.selectionStart = input.selectionEnd = text.length;
+  };
+
   // Sessions
   sessionUI = new SessionUI(wsClient, (name, sessionId, cwd) => {
     // Only auto-greet brand new sessions (sessionId is null)
