@@ -331,6 +331,13 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           }, (proc) => { connState.pendingProc = proc; });
           break;
 
+        case 'connect_external_session':
+          detachFromSession(ws, connState);
+          handleConnectExternalSession(ws, msg, manager, (proc, sid) => {
+            onSessionReady(proc, sid, 'connected-external');
+          }, (proc) => { connState.pendingProc = proc; });
+          break;
+
         case 'rejoin_session':
           detachFromSession(ws, connState);
           handleRejoinSession(ws, msg, manager, (proc, sid) => {
@@ -501,6 +508,65 @@ function handleResumeSession(
     // Kick-start fresh session too
     proc.sendMessage('hello');
   }
+}
+
+function handleConnectExternalSession(
+  ws: WebSocket,
+  msg: WSMessage,
+  manager: SessionManager,
+  setCurrent: (proc: ClaudeProcess, sid: string) => void,
+  onProcSpawned?: (proc: ClaudeProcess) => void
+): void {
+  const { sessionId, cwd, name } = msg;
+  if (!sessionId || !cwd) {
+    ws.send(JSON.stringify({ type: 'error', error: 'sessionId and cwd required' }));
+    return;
+  }
+
+  const sessionName = name || cwd.split('/').filter(Boolean).pop() || 'External Session';
+
+  // Check if process is already running
+  let proc = manager.getProcess(sessionId);
+  if (proc && proc.isAlive) {
+    const actualSid = proc.sessionId || sessionId;
+    sessionLog('CONNECT_EXTERNAL_ALIVE', { requestedId: sessionId, actualSid });
+    // Adopt into PilotCode's session list
+    manager.saveSession({
+      id: actualSid, name: sessionName, cwd,
+      createdAt: new Date().toISOString(), lastUsed: new Date().toISOString(),
+    });
+    setCurrent(proc, actualSid);
+    if (onProcSpawned) onProcSpawned(proc);
+    addClient(actualSid, ws);
+    if (actualSid !== sessionId) addClient(sessionId, ws);
+    ws.send(JSON.stringify({ type: 'session_rejoined', sessionId: actualSid }));
+    replayBufferedMessages(ws, actualSid);
+    wireExistingProcess(ws, proc, actualSid, manager);
+    return;
+  }
+
+  // Validate session against Claude's .jsonl files
+  const validId = findValidSession(sessionId, cwd);
+  if (!validId) {
+    ws.send(JSON.stringify({ type: 'error', error: 'Session not found in Claude data.' }));
+    return;
+  }
+
+  // Adopt into PilotCode's session list before spawning
+  manager.saveSession({
+    id: sessionId, name: sessionName, cwd,
+    createdAt: new Date().toISOString(), lastUsed: new Date().toISOString(),
+  });
+
+  sessionLog('CONNECT_EXTERNAL_SPAWN', { sessionId: validId, name: sessionName, cwd });
+  proc = manager.createProcess({ cwd, resume: validId });
+  if (onProcSpawned) onProcSpawned(proc);
+  ensureBroadcastWired({
+    proc, knownSessionId: null, manager, name: sessionName, cwd,
+    replacesSessionId: sessionId, setCurrent, originWs: ws,
+  });
+
+  proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
 }
 
 function handleRejoinSession(

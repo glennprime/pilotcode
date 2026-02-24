@@ -1186,6 +1186,137 @@ html, body {
 .modal-actions .btn-primary { background: var(--accent); color: #000; }
 .modal-actions .btn-secondary { background: var(--bg-elevated); color: var(--text); }
 
+/* ── Connect Session Modal ── */
+#connect-session-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+#connect-session-modal.active { display: flex; }
+
+.connect-modal {
+  max-height: 80vh;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.connect-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.connect-tab {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.connect-tab.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+#external-sessions-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+#external-sessions-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.ext-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  margin-top: 8px;
+  background: var(--bg);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.ext-group-header:first-child { margin-top: 0; }
+
+.ext-group-path {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ext-group-count {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.ext-session-item {
+  padding: 10px 12px;
+  margin: 4px 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ext-session-item:active,
+.ext-session-item.selected {
+  border-color: var(--accent);
+  background: rgba(109, 159, 255, 0.08);
+}
+
+.ext-session-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.ext-session-summary {
+  font-size: 13px;
+  color: var(--text);
+  margin: 4px 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ext-session-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.drawer-header-btns {
+  display: flex;
+  gap: 6px;
+}
+
+#connect-session-btn {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* ── Streaming indicator ── */
 .typing-indicator {
   display: inline-flex;

@@ -6,6 +6,7 @@ import { basename, extname, join, resolve } from 'path';
 import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
 import { sessionBusyState, getSessionBusyState } from '../ws/handler.js';
+import { discoverExternalSessions } from '../claude/sessions.js';
 import { requireAuth } from './auth.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
@@ -61,6 +62,28 @@ export function createApiRouter(manager: SessionManager): Router {
         busy: sessionBusyState.get(s.id) || (active.includes(s.id) && getSessionBusyState(s.id) !== 'idle'),
       }))
     );
+  });
+
+  router.get('/api/external-sessions', requireAuth, (_req: Request, res: Response) => {
+    const sessions = manager.loadSessions();
+    const knownIds = sessions.map((s) => s.id);
+    const external = discoverExternalSessions(knownIds);
+
+    // Group by cwd, preserving mtime sort within groups
+    const groups = new Map<string, { cwd: string; sessions: typeof external }>();
+    for (const s of external) {
+      if (!groups.has(s.cwd)) {
+        groups.set(s.cwd, { cwd: s.cwd, sessions: [] });
+      }
+      groups.get(s.cwd)!.sessions.push(s);
+    }
+
+    // Sort groups by their most recent session's mtime
+    const grouped = Array.from(groups.values()).sort((a, b) =>
+      new Date(b.sessions[0].lastModified).getTime() - new Date(a.sessions[0].lastModified).getTime()
+    );
+
+    res.json(grouped);
   });
 
   router.patch('/api/sessions/:id', requireAuth, (req: Request, res: Response) => {

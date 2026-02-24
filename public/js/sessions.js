@@ -14,9 +14,14 @@ export class SessionUI {
     document.getElementById('new-session-btn').onclick = () => this.showNewSessionModal();
     document.getElementById('modal-cancel').onclick = () => this.hideNewSessionModal();
     document.getElementById('modal-create').onclick = () => this.createSession();
+    document.getElementById('connect-session-btn').onclick = () => this.showConnectModal();
+    document.getElementById('connect-modal-cancel').onclick = () => this.hideConnectModal();
+    document.getElementById('connect-modal-go').onclick = () => this.connectExternalSession();
     this.selectedCwd = null;
     this.currentBrowsePath = null;
+    this.selectedExternal = null;
     this.setupCwdPicker();
+    this.setupConnectTabs();
   }
 
   openDrawer() {
@@ -360,6 +365,117 @@ export class SessionUI {
     this.onSessionChange(name, sessionId, cwd);
   }
 
+  // ── Connect to External Session ──
+
+  setupConnectTabs() {
+    const tabs = document.querySelectorAll('.connect-tab');
+    tabs.forEach(tab => {
+      tab.onclick = () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('connect-browse-tab').style.display =
+          tab.dataset.tab === 'browse' ? '' : 'none';
+        document.getElementById('connect-manual-tab').style.display =
+          tab.dataset.tab === 'manual' ? '' : 'none';
+      };
+    });
+  }
+
+  showConnectModal() {
+    document.getElementById('connect-session-modal').classList.add('active');
+    this.loadExternalSessions();
+  }
+
+  hideConnectModal() {
+    document.getElementById('connect-session-modal').classList.remove('active');
+    this.selectedExternal = null;
+  }
+
+  async loadExternalSessions() {
+    const loading = document.getElementById('external-sessions-loading');
+    const list = document.getElementById('external-sessions-list');
+    const empty = document.getElementById('external-sessions-empty');
+
+    loading.style.display = '';
+    list.innerHTML = '';
+    empty.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/external-sessions');
+      if (!res.ok) throw new Error();
+      const groups = await res.json();
+      loading.style.display = 'none';
+
+      if (groups.length === 0) {
+        empty.style.display = '';
+        return;
+      }
+
+      this.renderExternalSessions(groups, list);
+    } catch {
+      loading.style.display = 'none';
+      empty.style.display = '';
+      empty.textContent = 'Failed to load sessions.';
+    }
+  }
+
+  renderExternalSessions(groups, container) {
+    this.selectedExternal = null;
+
+    for (const group of groups) {
+      const header = document.createElement('div');
+      header.className = 'ext-group-header';
+      header.innerHTML = `<span class="ext-group-path">${escapeHtml(group.cwd)}</span>
+        <span class="ext-group-count">${group.sessions.length}</span>`;
+      container.appendChild(header);
+
+      for (const s of group.sessions) {
+        const el = document.createElement('div');
+        el.className = 'ext-session-item';
+        el.dataset.sessionId = s.id;
+        el.dataset.cwd = group.cwd;
+        el.innerHTML = `
+          <div class="ext-session-id">${s.id.slice(0, 8)}...</div>
+          <div class="ext-session-summary">${escapeHtml(s.summary || '(no preview)')}</div>
+          <div class="ext-session-meta">${timeAgo(s.lastModified)} &middot; ${formatSize(s.sizeBytes)}</div>
+        `;
+        el.onclick = () => {
+          container.querySelectorAll('.ext-session-item.selected').forEach(
+            el => el.classList.remove('selected')
+          );
+          el.classList.add('selected');
+          this.selectedExternal = { id: s.id, cwd: group.cwd, summary: s.summary };
+        };
+        container.appendChild(el);
+      }
+    }
+  }
+
+  connectExternalSession() {
+    const browseActive = document.querySelector('.connect-tab.active')?.dataset.tab === 'browse';
+
+    let sessionId, cwd, name;
+
+    if (browseActive) {
+      if (!this.selectedExternal) return;
+      sessionId = this.selectedExternal.id;
+      cwd = this.selectedExternal.cwd;
+      name = cwd.split('/').filter(Boolean).pop() || 'External Session';
+    } else {
+      sessionId = document.getElementById('connect-session-id').value.trim();
+      cwd = document.getElementById('connect-session-cwd').value.trim();
+      name = document.getElementById('connect-session-name').value.trim() ||
+             cwd.split('/').filter(Boolean).pop() || 'External Session';
+      if (!sessionId || !cwd) return;
+    }
+
+    this.currentSessionId = '__creating__';
+    this.wsClient.send({ type: 'connect_external_session', sessionId, cwd, name });
+    this.hideConnectModal();
+    this.closeDrawer();
+    this.onSessionChange(name, null);
+  }
+
   setCurrentSession(sessionId) {
     this.currentSessionId = sessionId;
     localStorage.setItem('pilotcode_session', sessionId);
@@ -405,4 +521,10 @@ function timeAgo(dateStr) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
