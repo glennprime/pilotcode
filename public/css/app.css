@@ -1368,54 +1368,6 @@ a.file-path-link.pre-path:hover {
   text-decoration: underline;
 }
 
-/* ── User Message Action Buttons (Resend / Edit) ── */
-.msg-actions {
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-  margin-top: 6px;
-}
-
-.msg-action-btn {
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 15px;
-  padding: 2px 6px;
-  cursor: pointer;
-  border-radius: 4px;
-  line-height: 1;
-  transition: color 0.15s, background 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.msg-action-btn:active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-/* Desktop: hide until hover */
-@media (hover: hover) {
-  .msg-actions {
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-  .message.user:hover .msg-actions {
-    opacity: 1;
-  }
-  .msg-action-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
-  }
-}
-
-/* Touch devices: always visible at low opacity */
-@media (hover: none) {
-  .msg-actions {
-    opacity: 0.4;
-  }
-}
-
 /* Image in messages */
 .message img.chat-image {
   max-width: 100%;
