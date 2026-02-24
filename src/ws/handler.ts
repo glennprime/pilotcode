@@ -154,6 +154,11 @@ function getBufferedMessages(sessionId: string): string[] {
 /**
  * Replay buffered messages to a client that is rejoining a session.
  * Only sends display-relevant message types (assistant, user, result, etc.).
+ *
+ * Interactive messages (plan_approval, user_question) are ONLY replayed if
+ * the user hasn't responded yet (pendingInteractive still set). Without this
+ * check, every WebSocket reconnect (screen lock, tab switch) would re-show
+ * a stale plan/question card, causing an approve→interrupt→plan-mode loop.
  */
 function replayBufferedMessages(ws: WebSocket, sessionId: string): void {
   const buffered = getBufferedMessages(sessionId);
@@ -161,7 +166,13 @@ function replayBufferedMessages(ws: WebSocket, sessionId: string): void {
   for (const raw of buffered) {
     try {
       const parsed = JSON.parse(raw);
-      if (REPLAY_TYPES.has(parsed.type) && ws.readyState === WebSocket.OPEN) {
+      if (!REPLAY_TYPES.has(parsed.type)) continue;
+      // Skip stale interactive messages — only replay if still awaiting user response
+      if ((parsed.type === 'plan_approval' || parsed.type === 'user_question') &&
+          !pendingInteractive.has(sessionId)) {
+        continue;
+      }
+      if (ws.readyState === WebSocket.OPEN) {
         ws.send(raw);
       }
     } catch {}
