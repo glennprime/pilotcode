@@ -209,3 +209,29 @@ export function discoverExternalSessions(knownSessionIds: string[]): ExternalSes
   results.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
   return results.slice(0, 50);
 }
+
+/**
+ * Find a session by UUID across all project directories.
+ * Returns { cwd, sessionId } if found, null otherwise.
+ */
+export function findSessionById(sessionId: string): { cwd: string; sessionId: string } | null {
+  if (!UUID_RE.test(sessionId) || !existsSync(CLAUDE_PROJECTS_DIR)) return null;
+
+  try {
+    const projectDirs = readdirSync(CLAUDE_PROJECTS_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory());
+
+    for (const dir of projectDirs) {
+      const filePath = join(CLAUDE_PROJECTS_DIR, dir.name, `${sessionId}.jsonl`);
+      if (existsSync(filePath)) {
+        // Extract cwd from the file
+        const meta = extractSessionMeta(filePath, sessionId, dir.name);
+        if (meta) {
+          return { cwd: meta.cwd, sessionId };
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  return null;
+}

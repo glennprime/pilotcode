@@ -8,7 +8,7 @@ import { SessionManager } from '../claude/manager.js';
 import { ClaudeProcess } from '../claude/process.js';
 import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DATA_DIR } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
-import { findValidSession } from '../claude/sessions.js';
+import { findValidSession, findSessionById } from '../claude/sessions.js';
 import { log, sessionLog } from '../logger.js';
 import { getNtfyTopic } from '../config.js';
 
@@ -517,10 +517,21 @@ function handleConnectExternalSession(
   setCurrent: (proc: ClaudeProcess, sid: string) => void,
   onProcSpawned?: (proc: ClaudeProcess) => void
 ): void {
-  const { sessionId, cwd, name } = msg;
-  if (!sessionId || !cwd) {
-    ws.send(JSON.stringify({ type: 'error', error: 'sessionId and cwd required' }));
+  const { sessionId, name } = msg;
+  if (!sessionId) {
+    ws.send(JSON.stringify({ type: 'error', error: 'sessionId required' }));
     return;
+  }
+
+  // Resolve cwd: use provided value, or look it up from Claude's session files
+  let cwd = msg.cwd;
+  if (!cwd) {
+    const found = findSessionById(sessionId);
+    if (!found) {
+      ws.send(JSON.stringify({ type: 'error', error: 'Session not found. Could not locate .jsonl file for this UUID.' }));
+      return;
+    }
+    cwd = found.cwd;
   }
 
   const sessionName = name || cwd.split('/').filter(Boolean).pop() || 'External Session';

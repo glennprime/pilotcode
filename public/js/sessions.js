@@ -463,10 +463,8 @@ export class SessionUI {
       name = cwd.split('/').filter(Boolean).pop() || 'External Session';
     } else {
       sessionId = document.getElementById('connect-session-id').value.trim();
-      cwd = document.getElementById('connect-session-cwd').value.trim();
-      name = document.getElementById('connect-session-name').value.trim() ||
-             cwd.split('/').filter(Boolean).pop() || 'External Session';
-      if (!sessionId || !cwd) return;
+      name = document.getElementById('connect-session-name').value.trim() || 'External Session';
+      if (!sessionId) return;
     }
 
     this.currentSessionId = '__creating__';
