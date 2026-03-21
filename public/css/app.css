@@ -350,8 +350,114 @@ html, body {
 
 .copy-btn:active { background: var(--bg-hover); }
 
-/* Tool use indicators — hidden to reduce noise */
+/* Tool use indicators — hidden (legacy, kept for backward compat) */
 .tool-use { display: none; }
+
+/* ── Tool Operation Cards ── */
+.tool-card {
+  margin: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 13px;
+  animation: fadeIn 0.15s ease;
+}
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tool-card-icon {
+  color: var(--text-muted);
+  font-size: 10px;
+  width: 12px;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.tool-card.expanded .tool-card-icon {
+  transform: rotate(90deg);
+}
+.tool-card-summary {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tool-card-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.tool-card-status .tool-mini-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+.tool-card.done .tool-card-status {
+  color: var(--green);
+}
+.tool-card-detail {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  display: none;
+}
+.tool-card.expanded .tool-card-detail {
+  display: block;
+}
+.tool-card-output {
+  margin: 0;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.tool-card-output:empty {
+  display: none;
+}
+.tool-show-all {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.tool-show-all:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Turn Stats Bar ── */
+.turn-stats {
+  padding: 4px 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  margin: 2px 0 8px;
+  animation: fadeIn 0.15s ease;
+}
 
 /* ── Thinking Spinner ── */
 .thinking {

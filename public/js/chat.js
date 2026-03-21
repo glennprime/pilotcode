@@ -15,6 +15,7 @@ export class Chat {
     this.activeTasks = new Map(); // id -> { name, description, status }
     this.renderedMessageIds = new Set(); // dedup assistant messages during buffer replay
     this.renderedFileLinks = new Set(); // dedup file download links by message id
+    this.toolCards = new Map(); // tool_use id -> DOM element
     this.sessionCwd = ''; // working directory for resolving relative paths
 
     // Callbacks for user message actions (wired by app.js)
@@ -359,13 +360,17 @@ export class Chat {
       }
 
       case 'user': {
-        // These are tool results flowing back — update spinner
+        // These are tool results flowing back — update spinner + tool cards
         const content = msg.message?.content;
         if (Array.isArray(content)) {
           for (const block of content) {
-            if (block.type === 'tool_result' && block.tool_use_id && this.activeTasks.has(block.tool_use_id)) {
-              this.activeTasks.set(block.tool_use_id, { ...this.activeTasks.get(block.tool_use_id), status: 'done' });
-              this.renderTaskList();
+            if (block.type === 'tool_result' && block.tool_use_id) {
+              if (this.activeTasks.has(block.tool_use_id)) {
+                this.activeTasks.set(block.tool_use_id, { ...this.activeTasks.get(block.tool_use_id), status: 'done' });
+                this.renderTaskList();
+              }
+              // Append output to the matching tool card
+              this.appendToolResult(block.tool_use_id, block.content);
             }
           }
           const hasToolResult = content.some(b => b.type === 'tool_result');
@@ -384,6 +389,8 @@ export class Chat {
         if (msg.is_error && msg.result) {
           this.addSystemMessage(`Error: ${msg.result}`);
         }
+        // Show turn stats bar with tokens and duration
+        this.renderTurnStats(msg);
         break;
 
       case 'session_context_full':
@@ -455,6 +462,49 @@ export class Chat {
     }
   }
 
+  renderTurnStats(msg) {
+    if (!msg.usage && !msg.duration_ms) return;
+
+    const el = document.createElement('div');
+    el.className = 'turn-stats';
+
+    const parts = [];
+
+    if (msg.usage) {
+      const inp = msg.usage.input_tokens || 0;
+      const out = msg.usage.output_tokens || 0;
+      parts.push(`${this.formatTokens(inp)} in / ${this.formatTokens(out)} out`);
+
+      const cacheRead = msg.usage.cache_read_input_tokens || 0;
+      if (cacheRead > 0) {
+        parts.push(`${this.formatTokens(cacheRead)} cached`);
+      }
+    }
+
+    if (msg.duration_ms) {
+      parts.push(this.formatDuration(msg.duration_ms));
+    }
+
+    el.textContent = parts.join('  ·  ');
+    this.messagesEl.appendChild(el);
+    this.scrollToBottom();
+  }
+
+  formatTokens(n) {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
+    return String(n);
+  }
+
+  formatDuration(ms) {
+    if (ms >= 60_000) {
+      const mins = Math.floor(ms / 60_000);
+      const secs = Math.round((ms % 60_000) / 1000);
+      return `${mins}m ${secs}s`;
+    }
+    return (ms / 1000).toFixed(1) + 's';
+  }
+
   friendlyToolName(name) {
     const map = {
       Bash: 'Running command...',
@@ -485,11 +535,152 @@ export class Chat {
         this.startOrAppendAssistantText(block.text);
       } else if (block.type === 'tool_use') {
         this.finishStreaming();
-        // Don't clutter chat with routine tool use labels
+        // Render collapsible tool card (skip interactive tools shown as cards)
+        if (!['AskUserQuestion', 'ExitPlanMode'].includes(block.name)) {
+          const card = this.renderToolCard(block);
+          this.messagesEl.appendChild(card);
+        }
       }
     }
 
     this.scrollToBottom();
+  }
+
+  getToolSummary(toolUse) {
+    const name = toolUse.name;
+    const input = toolUse.input || {};
+    switch (name) {
+      case 'Bash': {
+        const desc = input.description ? `${input.description}: ` : '';
+        return `$ ${desc}${input.command || '...'}`;
+      }
+      case 'Read':
+        return `Read ${input.file_path || '...'}`;
+      case 'Write':
+        return `Write ${input.file_path || '...'}`;
+      case 'Edit':
+        return `Edit ${input.file_path || '...'}`;
+      case 'NotebookEdit':
+        return `Edit ${input.notebook_path || '...'}`;
+      case 'Grep': {
+        const path = input.path ? ` in ${input.path}` : '';
+        return `Grep "${input.pattern || '...'}"${path}`;
+      }
+      case 'Glob': {
+        const path = input.path ? ` in ${input.path}` : '';
+        return `Glob "${input.pattern || '...'}"${path}`;
+      }
+      case 'WebFetch':
+        return `Fetch ${input.url || '...'}`;
+      case 'WebSearch':
+        return `Search "${input.query || '...'}"`;
+      case 'Agent':
+        return `Agent: ${input.description || input.prompt?.slice(0, 80) || '...'}`;
+      case 'Task':
+        return `Task: ${input.description || input.subagent_type || '...'}`;
+      default:
+        return name;
+    }
+  }
+
+  renderToolCard(toolUse) {
+    const card = document.createElement('div');
+    card.className = 'tool-card';
+    card.dataset.toolId = toolUse.id;
+
+    const header = document.createElement('div');
+    header.className = 'tool-card-header';
+
+    const icon = document.createElement('span');
+    icon.className = 'tool-card-icon';
+    icon.textContent = '\u25B6';
+
+    const summary = document.createElement('span');
+    summary.className = 'tool-card-summary';
+    summary.textContent = this.getToolSummary(toolUse);
+    summary.title = summary.textContent;
+
+    const status = document.createElement('span');
+    status.className = 'tool-card-status';
+    status.innerHTML = '<span class="tool-mini-spinner"></span>';
+
+    header.appendChild(icon);
+    header.appendChild(summary);
+    header.appendChild(status);
+
+    header.addEventListener('click', () => {
+      card.classList.toggle('expanded');
+    });
+
+    const detail = document.createElement('div');
+    detail.className = 'tool-card-detail';
+
+    const output = document.createElement('pre');
+    output.className = 'tool-card-output';
+    detail.appendChild(output);
+
+    card.appendChild(header);
+    card.appendChild(detail);
+
+    this.toolCards.set(toolUse.id, card);
+    return card;
+  }
+
+  appendToolResult(toolUseId, content) {
+    const card = this.toolCards.get(toolUseId);
+    if (!card) return;
+
+    // Mark as done
+    card.classList.add('done');
+    const status = card.querySelector('.tool-card-status');
+    if (status) status.textContent = '\u2713';
+
+    // Extract text content from the result
+    let text = '';
+    if (typeof content === 'string') {
+      text = content;
+    } else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          text += block.text;
+        } else if (block.type === 'tool_result' && block.content) {
+          if (typeof block.content === 'string') {
+            text += block.content;
+          } else if (Array.isArray(block.content)) {
+            for (const inner of block.content) {
+              if (inner.type === 'text') text += inner.text;
+            }
+          }
+        }
+      }
+    }
+
+    if (!text) return;
+
+    const output = card.querySelector('.tool-card-output');
+    if (!output) return;
+
+    const lines = text.split('\n');
+    const MAX_LINES = 100;
+
+    if (lines.length > MAX_LINES) {
+      output.textContent = lines.slice(0, MAX_LINES).join('\n');
+
+      const existing = card.querySelector('.tool-show-all');
+      if (existing) existing.remove();
+
+      const showAll = document.createElement('button');
+      showAll.className = 'tool-show-all';
+      showAll.textContent = `Show all ${lines.length} lines`;
+      showAll.addEventListener('click', (e) => {
+        e.stopPropagation();
+        output.textContent = text;
+        showAll.remove();
+      });
+      card.querySelector('.tool-card-detail').appendChild(showAll);
+    } else {
+      output.textContent = text;
+    }
   }
 
   renderFileLinks(fileTools) {
@@ -573,6 +764,7 @@ export class Chat {
     this.activeTasks.clear();
     this.renderedMessageIds.clear();
     this.renderedFileLinks.clear();
+    this.toolCards.clear();
     this.hideThinking();
     this.setWorking(false);
     this.sessionId = newSessionId;

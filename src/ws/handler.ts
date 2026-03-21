@@ -378,6 +378,12 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           log('ws', `Interrupt sent for session ${connState.currentSessionId}`);
           break;
 
+        case 'ping':
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'pong' }));
+          }
+          break;
+
         default:
           log('ws', `Unknown message type: ${msg.type}`, 'warn');
           ws.send(JSON.stringify({ type: 'error', error: `Unknown type: ${msg.type}` }));

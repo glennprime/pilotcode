@@ -8,6 +8,8 @@ export class WSClient {
     this.shouldReconnect = true;
     this.activeSessionId = null;
     this.pendingMessages = []; // queue messages while disconnected
+    this.heartbeatInterval = null;
+    this.lastMessageTime = 0;
   }
 
   connect() {
@@ -20,6 +22,8 @@ export class WSClient {
     this.ws.onopen = () => {
       this.onStatusChange('connected');
       this.reconnectDelay = 1000;
+      this.lastMessageTime = Date.now();
+      this.startHeartbeat();
 
       // Re-associate with the active session after reconnecting
       if (this.activeSessionId) {
@@ -31,6 +35,7 @@ export class WSClient {
     };
 
     this.ws.onmessage = (e) => {
+      this.lastMessageTime = Date.now();
       try {
         const msg = JSON.parse(e.data);
 
@@ -41,11 +46,15 @@ export class WSClient {
         }
         delete msg._sid;
 
+        // Handle application-level pong silently
+        if (msg.type === 'pong') return;
+
         this.onMessage(msg);
       } catch { /* ignore non-JSON */ }
     };
 
     this.ws.onclose = (e) => {
+      this.stopHeartbeat();
       this.onStatusChange('disconnected');
       if (e.code === 4001) {
         // Auth failed — don't reconnect
@@ -92,8 +101,30 @@ export class WSClient {
     this.activeSessionId = sessionId;
   }
 
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        if (Date.now() - this.lastMessageTime > 45_000) {
+          console.warn('[ws] Connection stale — no messages for 45s, reconnecting');
+          this.ws.close();
+          return;
+        }
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 25_000);
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
   disconnect() {
     this.shouldReconnect = false;
+    this.stopHeartbeat();
     this.ws?.close();
   }
 }
