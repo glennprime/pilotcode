@@ -165,13 +165,21 @@ export class Chat {
     }
 
     container.innerHTML = '';
-    for (const [id, task] of this.activeTasks) {
+    const tasks = [...this.activeTasks.entries()];
+    tasks.forEach(([id, task], i) => {
+      const isLast = i === tasks.length - 1;
       const item = document.createElement('div');
       item.className = `task-item ${task.status}`;
-      const icon = task.status === 'running' ? '<div class="task-spinner"></div>' : '<span class="task-check">&#10003;</span>';
-      item.innerHTML = `${icon}<span class="task-label">${escapeHtml(task.name)}</span>`;
+      // CLI-style tree with filled/empty squares
+      const branch = isLast ? '\u2514' : '\u251C'; // └ or ├
+      const icon = task.status === 'done'
+        ? '<span class="task-icon done">\u25A0</span>'   // ■ filled
+        : task.status === 'running'
+          ? '<span class="task-icon running">\u25A0</span>' // ■ active (colored)
+          : '<span class="task-icon pending">\u25A1</span>'; // □ empty
+      item.innerHTML = `<span class="task-branch">${branch}</span>${icon}<span class="task-label">${escapeHtml(task.name)}</span>`;
       container.appendChild(item);
-    }
+    });
     this.scrollToBottom();
   }
 
@@ -389,7 +397,6 @@ export class Chat {
         if (msg.is_error && msg.result) {
           this.addSystemMessage(`Error: ${msg.result}`);
         }
-        // Show turn stats bar with tokens and duration
         this.renderTurnStats(msg);
         break;
 
@@ -546,40 +553,66 @@ export class Chat {
     this.scrollToBottom();
   }
 
-  getToolSummary(toolUse) {
+  /** Shorten an absolute path to relative using the session's cwd. */
+  relativePath(absPath) {
+    if (!absPath || !this.sessionCwd) return absPath || '...';
+    let cwd = this.sessionCwd;
+    if (!cwd.endsWith('/')) cwd += '/';
+    if (absPath.startsWith(cwd)) return absPath.slice(cwd.length);
+    return absPath;
+  }
+
+  /**
+   * Get tool card display info. Returns { label, detail } where:
+   * - label: the header line (always shown)
+   * - detail: optional secondary line (shown below label in smaller text)
+   * This matches the CLI's two-line layout.
+   */
+  getToolDisplay(toolUse) {
     const name = toolUse.name;
     const input = toolUse.input || {};
     switch (name) {
-      case 'Bash': {
-        const desc = input.description ? `${input.description}: ` : '';
-        return `$ ${desc}${input.command || '...'}`;
-      }
+      case 'Bash':
+        return {
+          label: input.description || 'Running command...',
+          detail: `$ ${input.command || '...'}`,
+        };
       case 'Read':
-        return `Read ${input.file_path || '...'}`;
+        return { label: `Read ${this.relativePath(input.file_path)}` };
       case 'Write':
-        return `Write ${input.file_path || '...'}`;
+        return { label: `Write ${this.relativePath(input.file_path)}` };
       case 'Edit':
-        return `Edit ${input.file_path || '...'}`;
+        return { label: `Edit ${this.relativePath(input.file_path)}` };
       case 'NotebookEdit':
-        return `Edit ${input.notebook_path || '...'}`;
-      case 'Grep': {
-        const path = input.path ? ` in ${input.path}` : '';
-        return `Grep "${input.pattern || '...'}"${path}`;
-      }
-      case 'Glob': {
-        const path = input.path ? ` in ${input.path}` : '';
-        return `Glob "${input.pattern || '...'}"${path}`;
-      }
+        return { label: `Edit ${this.relativePath(input.notebook_path)}` };
+      case 'Grep':
+        return {
+          label: `Grep "${input.pattern || '...'}"`,
+          detail: input.path ? `in ${this.relativePath(input.path)}` : undefined,
+        };
+      case 'Glob':
+        return {
+          label: `Glob "${input.pattern || '...'}"`,
+          detail: input.path ? `in ${this.relativePath(input.path)}` : undefined,
+        };
       case 'WebFetch':
-        return `Fetch ${input.url || '...'}`;
+        return { label: `Fetch ${input.url || '...'}` };
       case 'WebSearch':
-        return `Search "${input.query || '...'}"`;
+        return { label: `Search "${input.query || '...'}"` };
+      case 'Skill':
+        return { label: `/${input.skill || 'skill'}`, detail: input.args || undefined };
       case 'Agent':
-        return `Agent: ${input.description || input.prompt?.slice(0, 80) || '...'}`;
+        return {
+          label: `Agent (${input.subagent_type || 'general'})`,
+          detail: input.description || input.prompt?.slice(0, 100) || undefined,
+        };
       case 'Task':
-        return `Task: ${input.description || input.subagent_type || '...'}`;
+        return {
+          label: `Task (${input.subagent_type || 'general'})`,
+          detail: input.description || undefined,
+        };
       default:
-        return name;
+        return { label: name };
     }
   }
 
@@ -587,6 +620,9 @@ export class Chat {
     const card = document.createElement('div');
     card.className = 'tool-card';
     card.dataset.toolId = toolUse.id;
+    card.dataset.startTime = Date.now();
+
+    const display = this.getToolDisplay(toolUse);
 
     const header = document.createElement('div');
     header.className = 'tool-card-header';
@@ -595,32 +631,44 @@ export class Chat {
     icon.className = 'tool-card-icon';
     icon.textContent = '\u25B6';
 
-    const summary = document.createElement('span');
-    summary.className = 'tool-card-summary';
-    summary.textContent = this.getToolSummary(toolUse);
-    summary.title = summary.textContent;
+    const labelWrap = document.createElement('div');
+    labelWrap.className = 'tool-card-labels';
+
+    const label = document.createElement('span');
+    label.className = 'tool-card-label';
+    label.textContent = display.label;
+    label.title = display.label;
+    labelWrap.appendChild(label);
+
+    if (display.detail) {
+      const detail = document.createElement('span');
+      detail.className = 'tool-card-detail-line';
+      detail.textContent = display.detail;
+      detail.title = display.detail;
+      labelWrap.appendChild(detail);
+    }
 
     const status = document.createElement('span');
     status.className = 'tool-card-status';
     status.innerHTML = '<span class="tool-mini-spinner"></span>';
 
     header.appendChild(icon);
-    header.appendChild(summary);
+    header.appendChild(labelWrap);
     header.appendChild(status);
 
     header.addEventListener('click', () => {
       card.classList.toggle('expanded');
     });
 
-    const detail = document.createElement('div');
-    detail.className = 'tool-card-detail';
+    const detailPane = document.createElement('div');
+    detailPane.className = 'tool-card-detail';
 
     const output = document.createElement('pre');
     output.className = 'tool-card-output';
-    detail.appendChild(output);
+    detailPane.appendChild(output);
 
     card.appendChild(header);
-    card.appendChild(detail);
+    card.appendChild(detailPane);
 
     this.toolCards.set(toolUse.id, card);
     return card;
@@ -630,10 +678,15 @@ export class Chat {
     const card = this.toolCards.get(toolUseId);
     if (!card) return;
 
-    // Mark as done
+    // Mark as done with timing
     card.classList.add('done');
     const status = card.querySelector('.tool-card-status');
-    if (status) status.textContent = '\u2713';
+    if (status) {
+      const startTime = parseInt(card.dataset.startTime || '0');
+      const elapsed = startTime ? Date.now() - startTime : 0;
+      const timing = elapsed > 0 ? this.formatDuration(elapsed) : '';
+      status.textContent = timing ? `${timing} ✓` : '✓';
+    }
 
     // Extract text content from the result
     let text = '';

@@ -353,20 +353,20 @@ html, body {
 /* Tool use indicators — hidden (legacy, kept for backward compat) */
 .tool-use { display: none; }
 
-/* ── Tool Operation Cards ── */
+/* ── Tool Operation Cards (CLI-style) ── */
 .tool-card {
-  margin: 4px 0;
+  margin: 2px 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
   font-size: 13px;
   animation: fadeIn 0.15s ease;
 }
 .tool-card-header {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 10px;
   background: var(--bg-surface);
   cursor: pointer;
   user-select: none;
@@ -378,12 +378,19 @@ html, body {
   width: 12px;
   flex-shrink: 0;
   transition: transform 0.15s;
+  margin-top: 3px;
 }
 .tool-card.expanded .tool-card-icon {
   transform: rotate(90deg);
 }
-.tool-card-summary {
+.tool-card-labels {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.tool-card-label {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-dim);
@@ -391,10 +398,21 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tool-card-status {
+.tool-card-detail-line {
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tool-card-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
   flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 1px;
 }
 .tool-card-status .tool-mini-spinner {
   display: inline-block;
@@ -407,7 +425,7 @@ html, body {
   vertical-align: middle;
 }
 .tool-card.done .tool-card-status {
-  color: var(--green);
+  color: var(--text-muted);
 }
 .tool-card-detail {
   border-top: 1px solid var(--border);
@@ -448,15 +466,15 @@ html, body {
   background: var(--bg-hover);
 }
 
-/* ── Turn Stats Bar ── */
+/* ── Turn Stats Bar (CLI-style) ── */
 .turn-stats {
-  padding: 4px 16px;
+  padding: 3px 16px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
-  border-top: 1px solid var(--border);
-  margin: 2px 0 8px;
+  margin: 2px 0 6px;
   animation: fadeIn 0.15s ease;
+  opacity: 0.7;
 }
 
 /* ── Thinking Spinner ── */
@@ -1452,47 +1470,48 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 /* ── Agent Task List ── */
+/* ── Task List (CLI tree style) ── */
 #task-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 1px;
+  padding: 4px 12px;
   margin: 4px 0;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  font-family: var(--font-mono);
   animation: fadeIn 0.15s ease;
 }
 
 .task-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-dim);
-  padding: 4px 0;
-}
-
-.task-item.done {
-  color: var(--green);
-}
-
-.task-spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-
-.task-check {
+  gap: 4px;
   font-size: 12px;
-  color: var(--green);
-  width: 12px;
-  text-align: center;
+  color: var(--text-dim);
+  padding: 1px 0;
+}
+
+.task-branch {
+  color: var(--text-muted);
   flex-shrink: 0;
+  width: 14px;
+}
+
+.task-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 10px;
+}
+.task-icon.done { color: var(--green); }
+.task-icon.running { color: var(--orange); }
+.task-icon.pending { color: var(--text-muted); }
+
+.task-item.done .task-label {
+  color: var(--text-dim);
+}
+.task-item.running .task-label {
+  color: var(--text);
+  font-weight: 500;
 }
 
 .task-label {
