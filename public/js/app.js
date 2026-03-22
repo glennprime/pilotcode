@@ -252,9 +252,13 @@ function doSend(text, images) {
 
 function handleMessage(msg) {
   switch (msg.type) {
-    // Track session ID from init — only process once per session
+    // Track session ID from init — only process once per session.
+    // IMPORTANT: Only update session tracking if we don't already have a session ID.
+    // On resume, Claude CLI may return a different session_id (ID drift) but the
+    // server keeps broadcasting on the canonical ID. If we update here, the client-side
+    // session filter will reject all messages tagged with the canonical _sid.
     case 'system':
-      if (msg.session_id && msg.session_id !== chat.sessionId) {
+      if (msg.session_id && !chat.sessionId) {
         sessionUI.setCurrentSession(msg.session_id);
         chat.setSession(msg.session_id);
         wsClient.setActiveSession(msg.session_id);
