@@ -98,6 +98,8 @@ function showApp() {
     // When resuming an existing session, skip the auto-greet
     sessionGreeted = !!sessionId;
     if (cwd) chat.sessionCwd = cwd;
+    // Clear any stale pending message when switching/creating sessions
+    pendingMessage = null;
     chat.switchSession(sessionId || null);
     // Show chat UI immediately when switching to an existing session
     if (sessionId) hideNoSessionPrompt();

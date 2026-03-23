@@ -417,9 +417,14 @@ function handleCreateSession(
 
   // Claude CLI (2.1.49+) with --input-format stream-json won't emit the
   // system init message until it receives the first user message on stdin.
-  // Send the initial message immediately to kick-start the session.
-  const initMessage = msg.initialMessage || 'hello';
-  proc.sendMessage(initMessage);
+  if (msg.initialMessage) {
+    proc.sendMessage(msg.initialMessage);
+  } else {
+    // Send a no-op init to trigger the system message without generating a real response.
+    // The response will appear in chat but it's just a greeting — acceptable tradeoff
+    // to get the session initialized immediately.
+    proc.sendMessage('You are starting a new session. Simply respond with a brief greeting.');
+  }
 }
 
 function handleResumeSession(
