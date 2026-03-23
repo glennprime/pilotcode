@@ -1012,6 +1012,32 @@ html, body {
 
 #session-drawer.open { left: 0; }
 
+#drawer-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+#force-refresh-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+#force-refresh-btn:active {
+  background: var(--bg-hover);
+}
+#app-version {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
 #drawer-header {
   padding: 16px;
   border-bottom: 1px solid var(--border);

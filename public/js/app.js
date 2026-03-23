@@ -154,6 +154,21 @@ function showApp() {
   document.getElementById('start-session-btn').onclick = () => {
     sessionUI.showNewSessionModal();
   };
+
+  // Force refresh button — clears service worker cache and reloads
+  document.getElementById('force-refresh-btn').onclick = async () => {
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) await reg.unregister();
+    }
+    const keys = await caches.keys();
+    for (const key of keys) await caches.delete(key);
+    location.reload(true);
+  };
+
+  // Show app version (service worker cache name)
+  const versionEl = document.getElementById('app-version');
+  if (versionEl) versionEl.textContent = 'v53';
 }
 
 function setupInput() {
