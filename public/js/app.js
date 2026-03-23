@@ -252,13 +252,13 @@ function doSend(text, images) {
 
 function handleMessage(msg) {
   switch (msg.type) {
-    // Track session ID from init — only process once per session.
-    // IMPORTANT: Only update session tracking if we don't already have a session ID.
+    // Track session ID from init.
+    // Only accept if: no session yet, OR we're creating a new session.
     // On resume, Claude CLI may return a different session_id (ID drift) but the
     // server keeps broadcasting on the canonical ID. If we update here, the client-side
     // session filter will reject all messages tagged with the canonical _sid.
     case 'system':
-      if (msg.session_id && !chat.sessionId) {
+      if (msg.session_id && (!chat.sessionId || creatingSession)) {
         sessionUI.setCurrentSession(msg.session_id);
         chat.setSession(msg.session_id);
         wsClient.setActiveSession(msg.session_id);
@@ -273,11 +273,8 @@ function handleMessage(msg) {
           chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
           chat.showThinking('Thinking...');
         } else if (!sessionGreeted) {
-          // Auto-greet: session created from modal with no message queued
+          // Session created from modal with no message — just mark ready
           sessionGreeted = true;
-          chat.addUserMessage('hello');
-          wsClient.send({ type: 'message', content: 'hello' });
-          chat.showThinking('Thinking...');
         }
       }
       break;
