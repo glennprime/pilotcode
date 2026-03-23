@@ -162,8 +162,11 @@ export class SessionUI {
     } catch { /* ignore */ }
     if (sessionId === this.currentSessionId) {
       this.currentSessionId = null;
+      this.wsClient.setActiveSession(null);
       localStorage.removeItem('pilotcode_session');
+      localStorage.removeItem('pilotcode_session_cwd');
       document.getElementById('session-name').textContent = 'No Session';
+      this.onSessionChange(null, null);
     }
     this.refreshList();
   }
@@ -348,6 +351,8 @@ export class SessionUI {
 
     // Mark as creating so sendMessage() won't auto-create another
     this.currentSessionId = '__creating__';
+    // Clear the active session filter so the new session's messages aren't blocked
+    this.wsClient.setActiveSession(null);
     this.wsClient.send({ type: 'create_session', name, cwd: cwdPath, model });
     this.hideNewSessionModal();
     this.closeDrawer();
