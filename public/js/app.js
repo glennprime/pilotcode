@@ -211,18 +211,25 @@ function sendMessage() {
 
   if (!text && images.length === 0) return;
 
-  // No active session — user must create one via the modal
-  if (!sessionUI.currentSessionId || sessionUI.currentSessionId === '__creating__') {
+  // Session is being created from modal — queue the message until init completes
+  if (sessionUI.currentSessionId === '__creating__') {
+    pendingMessage = { text, images, pendingImages: [...imageHandler.pendingImages] };
+    creatingSession = true;
+    input.value = '';
+    input.style.height = 'auto';
+    imageHandler.clear();
+    return;
+  }
+
+  // No active session at all — create one inline using the message as the name
+  if (!sessionUI.currentSessionId) {
     if (creatingSession) return; // already creating, wait
     creatingSession = true;
     pendingMessage = { text, images, pendingImages: [...imageHandler.pendingImages] };
-    // Use first few words of the message as the session name
     const name = text.slice(0, 40) || 'New Session';
-    // Clear old session content before creating new one
     chat.clear();
     sessionGreeted = false;
     wsClient.send({ type: 'create_session', name, initialMessage: text });
-    // Clear input immediately
     input.value = '';
     input.style.height = 'auto';
     document.getElementById('send-btn').disabled = true;

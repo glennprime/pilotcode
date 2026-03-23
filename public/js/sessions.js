@@ -349,11 +349,13 @@ export class SessionUI {
     const name = document.getElementById('session-name-input').value.trim() || dirName || 'New Session';
     const model = document.getElementById('session-model-select').value || undefined;
 
-    // Mark as creating so sendMessage() won't auto-create another
+    // Mark as creating so sendMessage() won't auto-create another.
+    // Use a temporary ID that sendMessage() recognizes as "wait, session incoming".
     this.currentSessionId = '__creating__';
     // Clear the active session filter so the new session's messages aren't blocked
     this.wsClient.setActiveSession(null);
     this.wsClient.send({ type: 'create_session', name, cwd: cwdPath, model });
+    window.dispatchEvent(new CustomEvent('pilotcode:creating'));
     this.hideNewSessionModal();
     this.closeDrawer();
     this.onSessionChange(name, null);
