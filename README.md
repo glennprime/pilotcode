@@ -8,6 +8,10 @@ Claude Code's built-in `/remote-control` drops sessions and isn't reliable. Pilo
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 
+## Why PilotCode?
+
+I'm an airline pilot. I spend a lot of time in hotels during layovers, and I wanted to use Claude Code from my phone instead of lugging a laptop everywhere. Claude's built-in `/remote-control` wasn't cutting it — sessions would drop, there was no way to manage multiple projects, and it wasn't built for mobile. So I built PilotCode: a stable, multi-session interface that runs on your Mac at home and lets you control Claude Code from anywhere on your phone. Yes, the name is on purpose.
+
 ## What It Does
 
 - Chat with Claude Code from your phone, tablet, or any browser
