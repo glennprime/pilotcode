@@ -658,6 +658,19 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
         sessionLog('INIT', { newId: sid, replacesId: replacesSessionId || 'none', name });
         if (setCurrent) setCurrent(proc, sid);
 
+        // Send a direct session_created message to the originating client.
+        // This bypasses all broadcast/filter logic and guarantees the creating
+        // client knows the session ID, even if broadcast filters would block it.
+        if (originWs && originWs.readyState === WebSocket.OPEN) {
+          originWs.send(JSON.stringify({
+            type: 'session_created',
+            sessionId: sid,
+            name,
+            cwd,
+            model,
+          }));
+        }
+
         if (replacesSessionId && replacesSessionId !== sid) {
           handleSessionIdChange(manager, proc, replacesSessionId, sid, name, cwd, model);
         } else {

@@ -259,7 +259,28 @@ function doSend(text, images) {
 
 function handleMessage(msg) {
   switch (msg.type) {
-    // Track session ID from init.
+    // Direct notification that a session was created — bypasses all broadcast filters.
+    // This is the most reliable way to initialize a session on the client.
+    case 'session_created':
+      sessionUI.setCurrentSession(msg.sessionId);
+      chat.setSession(msg.sessionId);
+      wsClient.setActiveSession(msg.sessionId);
+      if (msg.cwd) chat.sessionCwd = msg.cwd;
+      creatingSession = false;
+      sessionGreeted = true;
+      hideNoSessionPrompt();
+      document.getElementById('session-name').textContent = msg.name || msg.sessionId.slice(0, 8);
+      // If user typed a message while session was creating, show it and wait for response
+      if (pendingMessage) {
+        const { text, pendingImages } = pendingMessage;
+        pendingMessage = null;
+        chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
+        chat.showThinking('Thinking...');
+      }
+      sessionUI.refreshList();
+      break;
+
+    // Track session ID from init (fallback — session_created is preferred).
     // Only accept if: no session yet, OR we're creating a new session.
     // On resume, Claude CLI may return a different session_id (ID drift) but the
     // server keeps broadcasting on the canonical ID. If we update here, the client-side
