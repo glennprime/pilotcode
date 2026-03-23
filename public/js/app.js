@@ -94,15 +94,21 @@ function showApp() {
 
   // Sessions
   sessionUI = new SessionUI(wsClient, (name, sessionId, cwd) => {
-    // Only auto-greet brand new sessions (sessionId is null)
-    // When resuming an existing session, skip the auto-greet
     sessionGreeted = !!sessionId;
     if (cwd) chat.sessionCwd = cwd;
-    // Clear any stale pending message when switching/creating sessions
     pendingMessage = null;
-    chat.switchSession(sessionId || null);
-    // Show chat UI immediately when switching to an existing session
-    if (sessionId) hideNoSessionPrompt();
+
+    if (sessionId === '__creating__') {
+      // New session from modal — show chat immediately with "connecting" state
+      chat.switchSession(null);
+      creatingSession = true;
+      hideNoSessionPrompt();
+      document.getElementById('session-name').textContent = name || 'New Session';
+      chat.showThinking('Starting session...');
+    } else {
+      chat.switchSession(sessionId || null);
+      if (sessionId) hideNoSessionPrompt();
+    }
   });
 
   // Images

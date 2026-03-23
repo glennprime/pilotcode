@@ -417,14 +417,9 @@ function handleCreateSession(
 
   // Claude CLI (2.1.49+) with --input-format stream-json won't emit the
   // system init message until it receives the first user message on stdin.
-  if (msg.initialMessage) {
-    proc.sendMessage(msg.initialMessage);
-  } else {
-    // Send a no-op init to trigger the system message without generating a real response.
-    // The response will appear in chat but it's just a greeting — acceptable tradeoff
-    // to get the session initialized immediately.
-    proc.sendMessage('You are starting a new session. Simply respond with a brief greeting.');
-  }
+  // Send exactly ONE message to kick-start the session.
+  const initMsg = msg.initialMessage || 'hello';
+  proc.sendMessage(initMsg);
 }
 
 function handleResumeSession(
@@ -663,18 +658,25 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
         sessionLog('INIT', { newId: sid, replacesId: replacesSessionId || 'none', name });
         if (setCurrent) setCurrent(proc, sid);
 
-        // Send a direct session_created message to the originating client.
-        // This bypasses all broadcast/filter logic and guarantees the creating
-        // client knows the session ID, even if broadcast filters would block it.
+        // Send session_created to ALL connected clients (not just the originator).
+        // On mobile, the WebSocket connection may have been replaced between
+        // create_session and the system message, so direct ws.send() misses.
+        // Also send via broadcastAll so any client filtering for this session gets it.
+        const createdMsg = JSON.stringify({
+          type: 'session_created',
+          sessionId: sid,
+          name,
+          cwd,
+          model,
+        });
+        // Direct send to originator (immediate, no filter)
         if (originWs && originWs.readyState === WebSocket.OPEN) {
-          originWs.send(JSON.stringify({
-            type: 'session_created',
-            sessionId: sid,
-            name,
-            cwd,
-            model,
-          }));
+          originWs.send(createdMsg);
         }
+        // Also broadcast to all clients on this session
+        broadcastAll(sid, createdMsg);
+        // Also send to ALL connected clients globally (covers connection replacement)
+        broadcastGlobal(createdMsg);
 
         if (replacesSessionId && replacesSessionId !== sid) {
           handleSessionIdChange(manager, proc, replacesSessionId, sid, name, cwd, model);

@@ -156,24 +156,21 @@ export class SessionUI {
     };
   }
 
-  async deleteSession(sessionId) {
-    try {
-      await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-    } catch { /* ignore */ }
-    // Always clear if it matches current session by ID or if there's no other session
+  deleteSession(sessionId) {
+    // Clear UI immediately — don't wait for the server response
     this.currentSessionId = null;
     this.wsClient.setActiveSession(null);
     localStorage.removeItem('pilotcode_session');
     localStorage.removeItem('pilotcode_session_cwd');
     document.getElementById('session-name').textContent = 'No Session';
-    // Clear chat and show "no session" prompt
-    const messagesEl = document.getElementById('messages');
-    if (messagesEl) messagesEl.innerHTML = '';
-    const noSession = document.getElementById('no-session-prompt');
-    if (noSession) noSession.style.display = '';
-    const inputArea = document.getElementById('input-area');
-    if (inputArea) inputArea.classList.remove('busy');
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('no-session-prompt').classList.add('active');
+    document.getElementById('messages').style.display = 'none';
+    document.getElementById('input-area').style.display = 'none';
+    document.getElementById('input-area').classList.remove('busy');
     this.onSessionChange(null, null);
+    // Delete on server in background
+    fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => {});
     this.refreshList();
   }
 
@@ -355,16 +352,15 @@ export class SessionUI {
     const name = document.getElementById('session-name-input').value.trim() || dirName || 'New Session';
     const model = document.getElementById('session-model-select').value || undefined;
 
-    // Mark as creating so sendMessage() won't auto-create another.
-    // Use a temporary ID that sendMessage() recognizes as "wait, session incoming".
+    // Mark as creating — sendMessage() will queue messages until session_created arrives
     this.currentSessionId = '__creating__';
     // Clear the active session filter so the new session's messages aren't blocked
     this.wsClient.setActiveSession(null);
     this.wsClient.send({ type: 'create_session', name, cwd: cwdPath, model });
-    window.dispatchEvent(new CustomEvent('pilotcode:creating'));
     this.hideNewSessionModal();
     this.closeDrawer();
-    this.onSessionChange(name, null);
+    // Show the chat UI immediately — don't wait for server response
+    this.onSessionChange(name, '__creating__', cwdPath);
   }
 
   resumeSession(sessionId, name, cwd) {
