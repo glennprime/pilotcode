@@ -168,7 +168,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v53';
+  if (versionEl) versionEl.textContent = 'v54';
 }
 
 function setupInput() {
@@ -353,6 +353,7 @@ function handleMessage(msg) {
     // so duplicates are skipped. Replayed result messages clear the spinner, but
     // session_busy (sent AFTER replay) re-asserts it for still-busy sessions.
     case 'session_rejoined':
+      // Suppress ding during buffer replay so old results don't all ding
       dingSuppressed = true;
       setTimeout(() => { dingSuppressed = false; }, 2000);
       // Sync session ID — server may have resolved to a different ID via alias chain
@@ -362,13 +363,13 @@ function handleMessage(msg) {
         sessionUI.currentSessionId = msg.sessionId;
         localStorage.setItem('pilotcode_session', msg.sessionId);
       }
-      // Clear chat before buffer replay to prevent duplicates with loaded history.
-      // Buffer replay will repopulate with the most recent messages.
-      document.getElementById('messages').innerHTML = '';
-      chat.renderedMessageIds.clear();
-      chat.toolCards.clear();
+      // History was already loaded on page init — mark all existing content
+      // as rendered so buffer replay doesn't duplicate it. Buffer replay
+      // messages that match existing content will be silently skipped.
+      chat.suppressReplay = true;
+      setTimeout(() => { chat.suppressReplay = false; }, 3000);
       if (msg.busy) {
-        chat.setWorking(true);
+        chat.showThinking('Thinking...');
       }
       hideNoSessionPrompt();
       break;

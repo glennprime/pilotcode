@@ -16,6 +16,7 @@ export class Chat {
     this.renderedMessageIds = new Set(); // dedup assistant messages during buffer replay
     this.renderedFileLinks = new Set(); // dedup file download links by message id
     this.toolCards = new Map(); // tool_use id -> DOM element
+    this.suppressReplay = false; // true during buffer replay after reconnect
     this.sessionCwd = ''; // working directory for resolving relative paths
 
     // Callbacks for user message actions (wired by app.js)
@@ -307,6 +308,12 @@ export class Chat {
   }
 
   handleSDKMessage(msg, onPermissionResponse) {
+    // During buffer replay after reconnect, suppress rendering since
+    // history was already loaded. Only let through result/busy/control messages.
+    if (this.suppressReplay && (msg.type === 'assistant' || msg.type === 'user')) {
+      return;
+    }
+
     switch (msg.type) {
       case 'system':
         // Don't show "Session started" — it fires on every resume too.
