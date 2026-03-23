@@ -278,11 +278,17 @@ function handleMessage(msg) {
       sessionGreeted = true;
       hideNoSessionPrompt();
       document.getElementById('session-name').textContent = msg.name || msg.sessionId.slice(0, 8);
-      // If user typed a message while session was creating, show it and wait for response
+      // If user typed a message while session was being created from the modal,
+      // show it in chat AND send it to Claude now that the session is ready.
       if (pendingMessage) {
         const { text, pendingImages } = pendingMessage;
         pendingMessage = null;
         chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
+        wsClient.send({ type: 'message', content: text });
+        chat.showThinking('Thinking...');
+      } else {
+        // Session created from modal with no user message.
+        // Server sent a kick-start "hello" — show thinking while Claude responds.
         chat.showThinking('Thinking...');
       }
       sessionUI.refreshList();
@@ -341,6 +347,11 @@ function handleMessage(msg) {
         sessionUI.currentSessionId = msg.sessionId;
         localStorage.setItem('pilotcode_session', msg.sessionId);
       }
+      // Clear chat before buffer replay to prevent duplicates with loaded history.
+      // Buffer replay will repopulate with the most recent messages.
+      document.getElementById('messages').innerHTML = '';
+      chat.renderedMessageIds.clear();
+      chat.toolCards.clear();
       if (msg.busy) {
         chat.setWorking(true);
       }

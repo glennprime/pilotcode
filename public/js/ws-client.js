@@ -106,16 +106,16 @@ export class WSClient {
 
   startHeartbeat() {
     this.stopHeartbeat();
+    // Only check for stale connections — don't send app-level pings.
+    // The server already sends WebSocket protocol-level pings every 30s.
     this.heartbeatInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
-        if (Date.now() - this.lastMessageTime > 45_000) {
-          console.warn('[ws] Connection stale — no messages for 45s, reconnecting');
+        if (Date.now() - this.lastMessageTime > 60_000) {
+          console.warn('[ws] Connection stale — no messages for 60s, reconnecting');
           this.ws.close();
-          return;
         }
-        this.ws.send(JSON.stringify({ type: 'ping' }));
       }
-    }, 25_000);
+    }, 30_000);
   }
 
   stopHeartbeat() {
