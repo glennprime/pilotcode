@@ -44,7 +44,10 @@ export class WSClient {
         if (msg._sid && this.activeSessionId && msg._sid !== this.activeSessionId) {
           return; // wrong session — discard
         }
+        // Preserve source session for secondary checks, then strip the tag
+        const fromSession = msg._sid || null;
         delete msg._sid;
+        msg._fromSession = fromSession;
 
         // Handle application-level pong silently
         if (msg.type === 'pong') return;

@@ -395,6 +395,13 @@ function handleMessage(msg) {
       break;
   }
 
+  // Secondary session guard: if the message came from a specific session
+  // and it doesn't match what the chat is currently showing, skip it.
+  // This catches edge cases where ws-client's filter races with session switching.
+  if (msg._fromSession && chat.sessionId && msg._fromSession !== chat.sessionId) {
+    return; // wrong session — don't render in chat
+  }
+
   // Always forward to Chat for SDK message handling (assistant text, tool use, permissions, etc.)
   chat.handleSDKMessage(msg, (requestId, allow) => {
     wsClient.send({
