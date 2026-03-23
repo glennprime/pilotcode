@@ -404,7 +404,6 @@ export class Chat {
         if (msg.is_error && msg.result) {
           this.addSystemMessage(`Error: ${msg.result}`);
         }
-        this.renderTurnStats(msg);
         break;
 
       case 'session_context_full':
