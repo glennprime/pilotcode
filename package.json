@@ -2,8 +2,23 @@
   "name": "pilotcode",
   "version": "1.0.0",
   "description": "Self-hosted web UI for Claude Code — control from your phone",
+  "author": "Glenn Prime",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glennprime/pilotcode.git"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "remote",
+    "mobile",
+    "pwa",
+    "ai"
+  ],
   "type": "module",
   "scripts": {
+    "setup": "tsx scripts/setup.ts",
     "dev": "tsx --watch src/server.ts",
     "start": "tsx src/server.ts",
     "build": "tsc",

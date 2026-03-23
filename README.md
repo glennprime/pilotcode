@@ -1,12 +1,16 @@
 # PilotCode
 
-Control Claude Code from your phone. PilotCode is a self-hosted web app that runs on your Mac and gives you a mobile-friendly chat interface to Claude Code — create sessions, stream responses, handle permissions, upload files, and bounce between projects from anywhere.
+Control Claude Code from your phone. PilotCode is a self-hosted web app that gives you a mobile-friendly chat interface to Claude Code — create sessions, stream responses, handle permissions, upload files, and manage multiple projects from anywhere on your phone.
+
+Claude Code's built-in `/remote-control` drops sessions and isn't reliable. PilotCode gives you a stable, multi-session interface that works from any browser, anywhere.
 
 ![PilotCode](https://img.shields.io/badge/Claude_Code-Remote_UI-blueviolet)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 
 ## What It Does
 
-- Chat with Claude Code from any browser (phone, tablet, laptop)
+- Chat with Claude Code from your phone, tablet, or any browser
 - Create separate sessions per project with different models (Opus, Sonnet, Haiku)
 - Stream responses in real-time with tool use visibility
 - Allow/Deny tool permissions from the UI (same as the CLI)
@@ -15,28 +19,64 @@ Control Claude Code from your phone. PilotCode is a self-hosted web app that run
 - Sessions persist across server restarts
 - PWA — add to your iPhone home screen for a native-app feel
 
+## How It Works
+
+```
+Your phone (anywhere, on cellular)
+    ↕ HTTPS (Cloudflare Tunnel)
+Your Mac at home (PilotCode server, port 3456)
+    ↕ stdin/stdout JSON streaming
+Claude CLI (spawned as child process)
+    ↕ Anthropic API
+Claude (Opus/Sonnet/Haiku)
+```
+
+PilotCode runs on your Mac and spawns the Claude Code CLI as a child process. Your phone connects to it through a Cloudflare Tunnel, which gives you a permanent HTTPS URL without opening ports or exposing your IP. You control Claude from your phone exactly like you would from the terminal — but from anywhere.
+
+---
+
+## What You Need
+
+| Requirement | Cost | How to get it |
+|---|---|---|
+| **macOS, Linux, or Windows (WSL)** | — | Your computer that runs Claude Code |
+| **Node.js 20+** | Free | `brew install node` or [nvm](https://github.com/nvm-sh/nvm) |
+| **Claude Code CLI** | Free with Max plan / or API credits | `npm install -g @anthropic-ai/claude-code` |
+| **Anthropic account** | $20/mo (Max) or pay-per-use API | [console.anthropic.com](https://console.anthropic.com) |
+| **Cloudflare account** | Free | [dash.cloudflare.com](https://dash.cloudflare.com) |
+| **A domain name** | ~$5–10/year | Buy directly from Cloudflare (cheapest registrar) |
+
+> **About the domain:** You're not building a website. You just need a domain name so Cloudflare can route traffic to your Mac through their tunnel. That's it. Cloudflare sells domains at cost with no markup — cheapest ones start around $4–5/year, `.com` is about $10/year. You'll set up a subdomain like `pilot.yourdomain.com` that points to your PilotCode server.
+
 ---
 
 ## Setup Guide
 
-### Prerequisites
+This guide walks you through everything from zero to using PilotCode on your phone. Takes about 15–20 minutes.
 
-| Requirement | How to check | How to install |
-|---|---|---|
-| **macOS** (Apple Silicon or Intel) | You're on a Mac | — |
-| **Node.js 20+** | `node -v` | `brew install node` or [nvm](https://github.com/nvm-sh/nvm) |
-| **Claude Code CLI** | `claude --version` | `npm install -g @anthropic-ai/claude-code` |
-| **Anthropic account** | — | [console.anthropic.com](https://console.anthropic.com) with a Max plan or API key |
+> **Already using Claude Code?** You can have Claude install PilotCode for you. Open Claude Code and say: *"Read CLAUDE-INSTALL.md from the pilotcode repo and install PilotCode on this machine."* It will walk you through the whole process.
 
-### Step 1: Install Claude Code CLI
+### Part 1: Install Claude Code
+
+**1. Install the CLI**
 
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
-Run `claude` once in your terminal to log in. It'll open a browser for authentication. Once Claude responds to a message, you're good — press `Ctrl+C` to exit.
+**2. Log in**
 
-### Step 2: Clone and install PilotCode
+```bash
+claude
+```
+
+This opens a browser to authenticate with your Anthropic account. Once Claude responds to a message in the terminal, you're good — press `Ctrl+C` to exit.
+
+---
+
+### Part 2: Install PilotCode
+
+**3. Clone and install**
 
 ```bash
 git clone https://github.com/glennprime/pilotcode.git
@@ -44,151 +84,137 @@ cd pilotcode
 npm install
 ```
 
-### Step 3: Configure (optional)
+**4. Run the setup wizard**
 
 ```bash
-cp .env.example .env
+npm run setup
 ```
 
-Edit `.env` if you want to customize:
+The setup wizard walks you through:
+- Checking that Node.js, Claude CLI, and cloudflared are installed
+- Setting your default working directory (where Claude will work)
+- Creating your auth token (the password you'll use to log in from your phone)
+- Choosing a port
+- Testing that the server starts
 
-| Variable | Default | Description |
-|---|---|---|
-| `PILOTCODE_TOKEN` | auto-generated | Auth token for the web UI |
-| `PILOTCODE_CWD` | home directory | Default working directory for new sessions |
-| `PILOTCODE_PORT` | 3456 | Server port |
-| `CLOUDFLARE_TUNNEL` | pilotcode | Tunnel name (for remote access) |
+At the end it prints your auth token — **save it**, you'll need it to log in from your phone.
 
-### Step 4: Start the server
+> **Prefer to configure manually?** Copy `.env.example` to `.env` and edit it. See the table below:
+>
+> | Variable | Default | Description |
+> |---|---|---|
+> | `PILOTCODE_TOKEN` | auto-generated | Auth token for the web UI |
+> | `PILOTCODE_CWD` | home directory | Default working directory for new sessions |
+> | `PILOTCODE_PORT` | 3456 | Server port |
+
+**5. Verify it works**
 
 ```bash
 npm start
 ```
 
-First run prints an **auth token**:
+Open `http://localhost:3456` in a browser on your computer to verify it works. Send a test message. If Claude responds, the server is working.
 
-```
-  ╔══════════════════════════════════════╗
-  ║         PilotCode Server             ║
-  ╠══════════════════════════════════════╣
-  ║  http://localhost:3456               ║
-  ║                                      ║
-  ║  Auth token: a1b2c3d4...e5f6         ║
-  ╚══════════════════════════════════════╝
-
-  Full token: a1b2c3d4e5f67890abcdef1234567890
-```
-
-**Copy the full token.** You need it to log in.
-
-### Step 5: Open in your browser
-
-Go to `http://localhost:3456`, paste the token, and you're in.
-
-Send a message or tap the hamburger menu → **+ New** to create a session with a specific project directory and model.
+Stop the server with `Ctrl+C` — we'll set it up to run permanently after configuring remote access.
 
 ---
 
-## Remote Access (Cloudflare Tunnel)
+### Part 3: Set Up Remote Access (Cloudflare Tunnel)
 
-This lets you use PilotCode from anywhere — your phone on cellular, a coffee shop, etc. It creates a permanent HTTPS URL without opening ports on your router.
+This is the part that lets you use PilotCode from your phone when you're away from home. Cloudflare Tunnel creates a secure HTTPS connection from the internet to your Mac — **no port forwarding, no router configuration, no exposing your IP address**. The tunnel works by making an outbound connection from your Mac to Cloudflare, so your router doesn't need any changes at all.
 
-### 1. Install cloudflared
+#### Step 1: Create a Cloudflare account
+
+1. Go to [dash.cloudflare.com](https://dash.cloudflare.com) and sign up (free)
+2. Verify your email
+
+#### Step 2: Buy a domain
+
+You need a domain so Cloudflare can create a URL for your tunnel. You're not making a website — you just need the domain name.
+
+1. In the Cloudflare dashboard, go to **Domain Registration → Register Domains**
+2. Search for a domain name you like (e.g., `mytools.xyz`, `mycode.site`, `whatever.com`)
+3. Pick the cheapest TLD — some are as low as $4–5/year, `.com` is about $10/year
+4. Complete the purchase
+
+> **Tip:** Pick something short and easy to type on your phone. You'll be typing `pilot.yourdomain.com` into Safari.
+
+Once purchased, the domain is automatically managed by Cloudflare — no extra DNS setup needed.
+
+#### Step 3: Install cloudflared on your Mac
 
 ```bash
 brew install cloudflared
 ```
 
-### 2. Set up a Cloudflare account and domain
+#### Step 4: Create the tunnel from the Cloudflare dashboard
 
-You need a domain managed by Cloudflare. The free tier works fine.
-
-1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com)
-2. Add your domain (or buy one cheap — `.dev` domains are ~$12/yr)
-3. Point your domain's nameservers to Cloudflare (they'll walk you through it)
-
-### 3. Authenticate cloudflared
-
-```bash
-cloudflared tunnel login
-```
-
-This opens a browser — select your domain and authorize.
-
-### 4. Create the tunnel
+1. In the Cloudflare dashboard, go to **Zero Trust** (left sidebar) → **Networks** → **Tunnels**
+   - If this is your first time in Zero Trust, it will ask you to set up a team name. Pick anything — this is just an internal label.
+2. Click **Create a tunnel**
+3. Select **Cloudflared** as the connector type → **Next**
+4. Name your tunnel (e.g., `pilotcode`) → **Save tunnel**
+5. Under **Install and run a connector**, select your OS (**macOS**)
+6. It will show you a command like:
 
 ```bash
-cloudflared tunnel create pilotcode
+cloudflared service install eyJhIGxvbmcgdG9rZW4gc3RyaW5nIn0=
 ```
 
-It prints a tunnel ID like `ada21ecf-69d8-4179-bed2-c894dbdb974e`. You'll need this.
+**Run this command in your terminal.** This installs cloudflared as a system service and connects it to your Cloudflare account.
 
-### 5. Route DNS
+7. Wait a moment — you should see the connector appear as **Connected** in the dashboard
+8. Click **Next**
 
-```bash
-cloudflared tunnel route dns pilotcode pilot.yourdomain.com
-```
+#### Step 5: Route your domain to PilotCode
 
-Replace `pilot.yourdomain.com` with whatever subdomain you want.
+Still in the tunnel setup wizard:
 
-### 6. Create the tunnel config
+1. Under **Public Hostnames**, fill in:
+   - **Subdomain**: `pilot` (or whatever you want)
+   - **Domain**: select your domain from the dropdown
+   - **Type**: `HTTP`
+   - **URL**: `localhost:3456`
+2. Click **Save tunnel**
 
-Create the file `~/.cloudflared/config.yml`:
+That's it. Your PilotCode server is now available at `https://pilot.yourdomain.com`.
 
-```yaml
-tunnel: YOUR_TUNNEL_ID_HERE
-credentials-file: /Users/YOUR_USERNAME/.cloudflared/YOUR_TUNNEL_ID_HERE.json
+#### Step 6: Open PilotCode on your phone
 
-ingress:
-  - hostname: pilot.yourdomain.com
-    service: http://localhost:3456
-  - service: http_status:404
-```
-
-Replace the placeholders with your actual values. Find the credentials file:
-
-```bash
-ls ~/.cloudflared/*.json
-```
-
-### 7. Test it
-
-```bash
-# Start both server + tunnel in one command:
-npm run tunnel
-```
-
-Or run them separately:
-
-```bash
-# Terminal 1
-npm start
-
-# Terminal 2
-cloudflared tunnel run pilotcode
-```
-
-Now open `https://pilot.yourdomain.com` from any device, anywhere.
+1. Make sure PilotCode is running on your Mac (`npm start` in the pilotcode directory)
+2. On your phone, open Safari (or any browser)
+3. Go to `https://pilot.yourdomain.com`
+4. Enter your auth token
+5. You're in — send a message to Claude
 
 ---
 
-## Auto-Start on Boot (launchd)
+### Part 4: Make It Permanent (Auto-Start on Boot)
 
-So PilotCode runs automatically when your Mac starts up, and restarts if it crashes.
+PilotCode needs to be running for you to access it from your phone. Set it up to start automatically when your computer boots and restart if it crashes.
 
-### Find your paths first
+> **Note:** If you used the Cloudflare dashboard method in Step 4 above, the `cloudflared service install` command already set up the tunnel as a system service — it will auto-start on boot. You only need to set up auto-start for the PilotCode server itself.
+
+Pick your platform:
+
+- [macOS (launchd)](#macos-launchd)
+- [Linux (systemd)](#linux-systemd)
+- [Windows WSL](#windows-wsl)
+
+---
+
+#### macOS (launchd)
+
+**Find your paths first:**
 
 ```bash
 which npx        # e.g. /Users/you/.nvm/versions/node/v22.20.0/bin/npx
 which node       # e.g. /Users/you/.nvm/versions/node/v22.20.0/bin/node
-which cloudflared  # e.g. /opt/homebrew/bin/cloudflared
 echo $HOME       # e.g. /Users/you
 pwd              # run this inside the pilotcode directory
 ```
 
-### Server plist
-
-Save as `~/Library/LaunchAgents/com.pilotcode.server.plist`:
+**Create the plist file.** Save as `~/Library/LaunchAgents/com.pilotcode.server.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -225,56 +251,30 @@ Save as `~/Library/LaunchAgents/com.pilotcode.server.plist`:
 </plist>
 ```
 
-### Tunnel plist (if using Cloudflare)
+Replace all `/FULL/PATH/TO/` placeholders with your actual paths.
 
-Save as `~/Library/LaunchAgents/com.pilotcode.tunnel.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.pilotcode.tunnel</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/opt/homebrew/bin/cloudflared</string>
-        <string>tunnel</string>
-        <string>run</string>
-        <string>pilotcode</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/FULL/PATH/TO/pilotcode/data/tunnel.log</string>
-    <key>StandardErrorPath</key>
-    <string>/FULL/PATH/TO/pilotcode/data/tunnel.error.log</string>
-</dict>
-</plist>
-```
-
-### Load them
+**Load it:**
 
 ```bash
 launchctl load ~/Library/LaunchAgents/com.pilotcode.server.plist
-launchctl load ~/Library/LaunchAgents/com.pilotcode.tunnel.plist
 ```
 
-### Managing the services
+**Verify:**
 
 ```bash
-# Check if running
+# Check it's running
 launchctl list | grep pilotcode
 
-# View logs
-tail -f ~/Dev/pilotcode/data/server.log
-tail -f ~/Dev/pilotcode/data/server.error.log
+# Check the server responds
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3456
+# Should print: 200
+```
 
-# Stop (temporarily — KeepAlive will restart it)
-launchctl stop com.pilotcode.server
+**Managing the service:**
+
+```bash
+# View logs
+tail -f data/server.log
 
 # Fully stop (won't auto-restart)
 launchctl unload ~/Library/LaunchAgents/com.pilotcode.server.plist
@@ -284,33 +284,183 @@ launchctl unload ~/Library/LaunchAgents/com.pilotcode.server.plist
 launchctl load ~/Library/LaunchAgents/com.pilotcode.server.plist
 ```
 
+> **Important:** Because `KeepAlive` is set to true, you can't stop the server by killing the process — launchd will just restart it. Always use `launchctl unload` to fully stop it.
+
 ---
 
-## macOS Permissions (Important)
+#### Linux (systemd)
 
-Node.js needs **Full Disk Access** so Claude Code can read/write files without macOS blocking it (especially important for headless/remote operation).
+**Find your paths first:**
+
+```bash
+which npx        # e.g. /home/you/.nvm/versions/node/v22.20.0/bin/npx
+echo $HOME       # e.g. /home/you
+pwd              # run this inside the pilotcode directory
+```
+
+**Create the service file.** Save as `~/.config/systemd/user/pilotcode.service`:
+
+```bash
+mkdir -p ~/.config/systemd/user
+```
+
+```ini
+[Unit]
+Description=PilotCode Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/FULL/PATH/TO/pilotcode
+ExecStart=/FULL/PATH/TO/npx tsx src/server.ts
+Restart=always
+RestartSec=5
+Environment=PATH=/FULL/PATH/TO/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/YOUR_USERNAME
+
+[Install]
+WantedBy=default.target
+```
+
+Replace all `/FULL/PATH/TO/` and `YOUR_USERNAME` placeholders with your actual paths.
+
+**Enable and start:**
+
+```bash
+# Reload systemd to pick up the new service
+systemctl --user daemon-reload
+
+# Enable auto-start on boot
+systemctl --user enable pilotcode
+
+# Start it now
+systemctl --user start pilotcode
+
+# Allow user services to run without being logged in
+sudo loginctl enable-linger $USER
+```
+
+> The `enable-linger` command is important — without it, systemd kills your services when you log out, and PilotCode would stop working when you close your SSH session.
+
+**Verify:**
+
+```bash
+# Check status
+systemctl --user status pilotcode
+
+# Check the server responds
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3456
+# Should print: 200
+```
+
+**Managing the service:**
+
+```bash
+# View logs
+journalctl --user -u pilotcode -f
+
+# Stop temporarily
+systemctl --user stop pilotcode
+
+# Restart after code changes
+systemctl --user restart pilotcode
+
+# Disable auto-start
+systemctl --user disable pilotcode
+```
+
+---
+
+#### Windows (WSL)
+
+PilotCode runs inside WSL (Windows Subsystem for Linux). To make it start automatically:
+
+**1. Create a startup script** inside WSL at `~/start-pilotcode.sh`:
+
+```bash
+#!/bin/bash
+cd ~/pilotcode
+source ~/.nvm/nvm.sh  # if using nvm
+npm start >> data/server.log 2>> data/server.error.log &
+```
+
+```bash
+chmod +x ~/start-pilotcode.sh
+```
+
+**2. Set WSL to start on Windows boot.** Create a scheduled task in PowerShell (run as Administrator):
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "wsl.exe" -Argument "-d Ubuntu -u YOUR_WSL_USERNAME -- bash -c '/home/YOUR_WSL_USERNAME/start-pilotcode.sh'"
+$trigger = New-ScheduledTaskTrigger -AtLogon
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName "PilotCode" -Action $action -Trigger $trigger -Settings $settings -Description "Start PilotCode server in WSL"
+```
+
+Replace `YOUR_WSL_USERNAME` with your WSL username.
+
+**3. Make sure WSL doesn't shut down** when you close the terminal. In PowerShell:
+
+```powershell
+wsl --set-default-version 2
+```
+
+Add to your `%USERPROFILE%/.wslconfig`:
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+> **Note:** The `networkingMode=mirrored` setting makes WSL share your Windows network, so the Cloudflare Tunnel works properly.
+
+**Verify:**
+
+```powershell
+# From PowerShell
+curl http://localhost:3456
+```
+
+**Managing the service:**
+
+```bash
+# Inside WSL — check if running
+pgrep -f "tsx src/server.ts"
+
+# Stop
+pkill -f "tsx src/server.ts"
+
+# View logs
+tail -f ~/pilotcode/data/server.log
+```
+
+---
+
+### Part 5: macOS Permissions
+
+Node.js needs **Full Disk Access** so Claude Code can read/write files without macOS blocking it. This is especially important for headless/remote operation.
 
 1. Open **System Settings → Privacy & Security → Full Disk Access**
-2. Click **+** and add your `node` binary
+2. Click **+** and add your `node` binary:
 
-Find the exact path:
 ```bash
 which node
 # e.g. /Users/you/.nvm/versions/node/v22.20.0/bin/node
 ```
 
-> If you update Node.js, the path changes and you'll need to re-add it.
+> If you update Node.js (e.g. via nvm), the path changes and you'll need to re-add it.
 
 ---
 
 ## Install as PWA (iPhone)
 
-1. Open PilotCode in **Safari** on your iPhone
+For the best experience, add PilotCode to your home screen:
+
+1. Open `https://pilot.yourdomain.com` in **Safari** on your iPhone
 2. Tap the **Share** button (box with arrow)
 3. Tap **"Add to Home Screen"**
 4. Name it "PilotCode" and tap Add
 
-It opens full-screen like a native app.
+It opens full-screen like a native app — no browser bar, no tabs.
 
 ---
 
@@ -325,30 +475,78 @@ Sessions are separate Claude conversations, each tied to a project directory.
 - **Switch sessions**: Tap hamburger → tap any session to switch
 - **Resume**: Sessions survive server restarts. Switch back anytime and pick up where you left off.
 
+### Connect to Existing Sessions
+
+The **Connect** button in the sidebar lets you pick up Claude Code sessions that were started outside of PilotCode — for example, a session you started in your terminal.
+
+PilotCode scans your `~/.claude/projects/` directory and finds any existing sessions, grouped by project directory. You can browse them, see when they were last active and how large they are, then connect to continue the conversation from your phone.
+
+You can also enter a session ID manually if you know it (the **Manual ID** tab).
+
+This is useful when:
+- You started a long-running Claude session in your terminal and want to continue it from your phone
+- You want to check on or resume a session you started earlier on your computer
+- You're switching between your terminal and PilotCode and want to pick up where you left off
+
 ### Models
 
 When creating a session, pick your model:
 
 | Model | Best for |
 |---|---|
-| **Opus 4.6** | Complex tasks, architecture, multi-file changes |
-| **Sonnet 4.6** | Fast, capable, good default |
-| **Haiku 4.5** | Quick questions, simple edits, cheapest |
+| **Opus** | Complex tasks, architecture, multi-file changes |
+| **Sonnet** | Fast, capable, good default |
+| **Haiku** | Quick questions, simple edits, cheapest |
 
 ### Permissions
 
-When Claude wants to run a command, edit a file, or access the web, you'll see an Allow/Deny card — same as the regular CLI. Tap Allow to proceed or Deny to block.
+When Claude wants to run a command, edit a file, or access the web, you'll see an Allow/Deny card — same as the regular CLI. Tap Allow to proceed or Deny to block it.
 
 ### Uploads
 
-Tap the camera/paperclip button to attach:
-- Screenshots and photos
-- PDFs and documents
-- Any file Claude can analyze
+Tap the paperclip button to attach screenshots, photos, PDFs, or any file Claude can analyze.
 
 ### Multi-device
 
 Open PilotCode on multiple devices at once. Messages sync in real-time — start a conversation on your laptop, continue it from your phone.
+
+---
+
+## Security
+
+PilotCode is designed for **single-user, self-hosted** use.
+
+- **Auth token**: A random token is generated on first run. Anyone with this token can control Claude Code on your machine. Treat it like a password.
+- **HTTPS**: Cloudflare Tunnel encrypts all traffic between your phone and your Mac.
+- **Permissions**: PilotCode spawns Claude with `--dangerously-skip-permissions`, which means Claude will attempt tool calls (file edits, bash commands, etc.) and forward them to **you** for approval via the Allow/Deny UI. This flag is required for non-interactive operation — without it, Claude would prompt in a terminal that doesn't exist. **You are the permission gate.** Every tool call appears in the UI for your approval.
+- **File access**: Claude has access to your filesystem, scoped to the working directory you choose per session.
+- **No telemetry**: PilotCode doesn't phone home or collect data. Everything stays on your Mac.
+
+---
+
+## Alternative: Local Network Only (Free, No Domain)
+
+If you only want to use PilotCode on the same WiFi network (e.g., your phone and Mac are at home), you don't need Cloudflare or a domain at all.
+
+1. Find your Mac's local IP:
+```bash
+ipconfig getifaddr en0
+# e.g. 192.168.1.42
+```
+
+2. Start PilotCode:
+```bash
+npm start
+```
+
+3. On your phone (connected to the same WiFi), open:
+```
+http://192.168.1.42:3456
+```
+
+4. Enter your auth token and you're in.
+
+**Limitations:** This only works on your local network. It won't work on cellular or from outside your home. Traffic is unencrypted (HTTP). Your Mac's IP may change if you don't set a static IP on your router.
 
 ---
 
@@ -364,9 +562,9 @@ Open PilotCode on multiple devices at once. Messages sync in real-time — start
 - Delete the session and create a new one
 
 ### Can't connect from phone
-- Verify the server is running: `curl http://localhost:3456/api/auth/check`
-- Verify the tunnel is running: `pgrep -f cloudflared`
-- Make sure your Mac isn't in full sleep (display sleep is fine)
+- Make sure your Mac isn't in full sleep (display sleep is fine — close the lid is fine if sleep is disabled)
+- Check PilotCode is running: `curl http://localhost:3456/api/auth/check`
+- Check the tunnel is connected: look in Cloudflare dashboard → Zero Trust → Tunnels — status should say "Healthy"
 
 ### Auth token lost
 ```bash
@@ -387,6 +585,8 @@ tail -50 data/server.log
 tail -50 data/server.error.log
 ```
 
+For more detailed troubleshooting, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
 ---
 
 ## Development
@@ -394,27 +594,18 @@ tail -50 data/server.error.log
 ```bash
 npm run dev    # start with auto-reload on file changes
 npm start      # start normally
-npm run tunnel # start server + Cloudflare Tunnel together
 ```
 
 The frontend is vanilla HTML/CSS/JS in `public/` — no build step. Edit and refresh.
 
+For architecture details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ---
 
-## Architecture
+## License
 
-```
-Browser (phone/laptop)
-    ↕ WebSocket + REST
-PilotCode Server (Node.js/Express, port 3456)
-    ↕ stdin/stdout JSON streaming
-Claude CLI (claude --output-format stream-json)
-    ↕ Anthropic API
-Claude (Opus/Sonnet/Haiku)
-```
+[MIT](LICENSE)
 
-- **Backend**: Express + `ws` WebSocket server (TypeScript)
-- **Frontend**: Vanilla HTML/CSS/JS (no framework, no build)
-- **Storage**: JSON files in `data/` (sessions, history, config)
-- **Auth**: Random token + HTTP-only cookie
-- **Remote**: Cloudflare Tunnel for HTTPS from anywhere
+---
+
+Created by [Glenn Prime](https://github.com/glennprime)

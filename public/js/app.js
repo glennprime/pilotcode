@@ -4,6 +4,7 @@ import { SessionUI } from './sessions.js';
 import { ImageHandler, renderImagePreview } from './images.js';
 import { initMarkdown } from './markdown.js';
 import { initEasterEgg } from './easter-egg.js';
+import { showGuide, showGuideIfFirstTime } from './guide.js';
 
 // State
 let wsClient;
@@ -72,6 +73,11 @@ function showApp() {
   document.getElementById('app-view').classList.add('active');
 
   initEasterEgg();
+  showGuideIfFirstTime();
+
+  // Guide button in sidebar
+  const guideBtn = document.getElementById('guide-btn');
+  if (guideBtn) guideBtn.onclick = () => showGuide();
 
   // WebSocket
   wsClient = new WSClient(handleMessage, handleStatus);

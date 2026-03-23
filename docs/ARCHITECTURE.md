@@ -2,18 +2,20 @@
 
 ## Overview
 
-PilotCode is a self-hosted web UI that lets you control Claude Code from any browser (especially mobile). It runs a Node.js server on your Mac that spawns Claude CLI processes, streams output over WebSocket, and serves a mobile-first PWA chat interface.
+PilotCode is a self-hosted web UI for controlling Claude Code from your phone. It runs a Node.js server on your Mac, spawns Claude CLI processes, streams output over WebSocket, and serves a mobile-first PWA chat interface — accessible from anywhere via Cloudflare Tunnel.
 
 Each session is a fully independent Claude CLI process — like having multiple terminal tabs open.
 
 ## System Diagram
 
 ```
-iPhone/Browser
+Your phone (anywhere, on cellular)
     |
     | HTTPS (Cloudflare Tunnel)
     |
-PilotCode Server (Express + WebSocket)
+Your Mac at home
+    |
+PilotCode Server (Express + WebSocket, port 3456)
     |
     |--- Session A: claude --output-format stream-json (child process)
     |--- Session B: claude --output-format stream-json (child process)
@@ -169,8 +171,9 @@ Claude CLI sometimes returns a different session ID on resume. The server:
 
 ```
 ~/Library/LaunchAgents/com.pilotcode.server.plist  → Node.js server
-~/Library/LaunchAgents/com.pilotcode.tunnel.plist   → Cloudflare Tunnel
 ```
+
+The Cloudflare Tunnel connector is installed as a system service by `cloudflared service install` during setup.
 
 Management:
 ```bash

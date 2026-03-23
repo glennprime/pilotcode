@@ -19,7 +19,7 @@ export interface ExternalSession {
 
 /**
  * Convert a working directory to Claude's project directory path.
- * e.g. /Users/glennprime/Dev/infinitetrax → ~/.claude/projects/-Users-glennprime-Dev-infinitetrax
+ * e.g. /Users/you/Dev/myproject → ~/.claude/projects/-Users-you-Dev-myproject
  */
 export function getProjectPath(cwd: string): string {
   const resolved = resolve(cwd);
