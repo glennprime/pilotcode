@@ -664,8 +664,20 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
           handleNewSession(manager, sid, name, cwd, model);
         }
 
-        // Notify clients of the session ID
-        broadcastAll(sid, JSON.stringify({ type: 'session_id_update', oldSessionId: replacesSessionId || sid, newSessionId: sid }));
+        // Notify clients of the session ID — broadcast on BOTH old and new IDs
+        // so clients filtering for the old ID still receive the update.
+        const updateMsg = JSON.stringify({ type: 'session_id_update', oldSessionId: replacesSessionId || sid, newSessionId: sid });
+        broadcastAll(sid, updateMsg);
+        if (replacesSessionId && replacesSessionId !== sid) {
+          broadcastAll(replacesSessionId, updateMsg);
+          // Migrate clients from old session to new session
+          const oldClients = sessionClients.get(replacesSessionId);
+          if (oldClients) {
+            for (const client of oldClients) {
+              addClient(sid, client);
+            }
+          }
+        }
       } else if (sid !== sessionId) {
         // Claude changed session ID after init (normal on resume — reverts to original).
         // Do NOT migrate clients or change our canonical session ID. Just log it
