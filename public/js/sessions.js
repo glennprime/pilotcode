@@ -157,23 +157,23 @@ export class SessionUI {
   }
 
   async deleteSession(sessionId) {
-    const wasActive = sessionId === this.currentSessionId;
     try {
       await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
     } catch { /* ignore */ }
-    if (wasActive) {
-      this.currentSessionId = null;
-      this.wsClient.setActiveSession(null);
-      localStorage.removeItem('pilotcode_session');
-      localStorage.removeItem('pilotcode_session_cwd');
-      document.getElementById('session-name').textContent = 'No Session';
-      // Clear the chat and show the "no session" prompt
-      const messagesEl = document.getElementById('messages');
-      if (messagesEl) messagesEl.innerHTML = '';
-      const noSession = document.getElementById('no-session-prompt');
-      if (noSession) noSession.style.display = '';
-      this.onSessionChange(null, null);
-    }
+    // Always clear if it matches current session by ID or if there's no other session
+    this.currentSessionId = null;
+    this.wsClient.setActiveSession(null);
+    localStorage.removeItem('pilotcode_session');
+    localStorage.removeItem('pilotcode_session_cwd');
+    document.getElementById('session-name').textContent = 'No Session';
+    // Clear chat and show "no session" prompt
+    const messagesEl = document.getElementById('messages');
+    if (messagesEl) messagesEl.innerHTML = '';
+    const noSession = document.getElementById('no-session-prompt');
+    if (noSession) noSession.style.display = '';
+    const inputArea = document.getElementById('input-area');
+    if (inputArea) inputArea.classList.remove('busy');
+    this.onSessionChange(null, null);
     this.refreshList();
   }
 
