@@ -410,17 +410,22 @@ export class SessionUI {
   }
 
   renderActiveSessions(sessions) {
-    this.externalCount.textContent = sessions.length;
     this.externalList.innerHTML = '';
 
-    if (sessions.length === 0) {
+    // Filter out sessions that already have a PilotCode session with the same cwd
+    const pcCwds = new Set((this.pilotcodeSessions || []).map(pc => pc.cwd));
+    const filtered = sessions.filter(s => !pcCwds.has(s.cwd));
+
+    this.externalCount.textContent = filtered.length;
+
+    if (filtered.length === 0) {
       this.externalSection.style.display = 'none';
       return;
     }
 
     this.externalSection.style.display = '';
 
-    for (const s of sessions) {
+    for (const s of filtered) {
       const dirName = s.cwd.split('/').filter(Boolean).pop() || s.cwd;
       const el = document.createElement('div');
       el.className = 'ext-active-item';
@@ -432,16 +437,7 @@ export class SessionUI {
         <div class="ext-active-meta">${escapeHtml(s.summary || '')} &middot; ${timeAgo(s.lastModified)}</div>
       `;
       el.title = s.cwd;
-      // If there's a matching PilotCode session for this cwd, resume it instead of watching
-      const matchingPC = (this.pilotcodeSessions || []).find(pc => pc.cwd === s.cwd);
-      if (matchingPC) {
-        el.onclick = () => {
-          this.resumeSession(matchingPC.id, matchingPC.name, matchingPC.cwd);
-          this.closeDrawer();
-        };
-      } else {
-        el.onclick = () => this.watchFromSidebar(s.sessionId, s.cwd);
-      }
+      el.onclick = () => this.watchFromSidebar(s.sessionId, s.cwd);
       this.externalList.appendChild(el);
     }
   }
