@@ -15,6 +15,7 @@ let pendingMessage = null; // queued message while waiting for session init
 let creatingSession = false;
 let sessionGreeted = false; // prevent duplicate auto-greets
 let dingSuppressed = false; // suppress ding during buffer replay
+let watchMode = false; // true when observing a live session (read-only)
 
 // Boot
 document.addEventListener('DOMContentLoaded', async () => {
@@ -100,6 +101,8 @@ function showApp() {
 
   // Sessions
   sessionUI = new SessionUI(wsClient, (name, sessionId, cwd) => {
+    // Exit watch mode when switching to a real session
+    if (watchMode) exitWatchMode();
     sessionGreeted = !!sessionId;
     if (cwd) chat.sessionCwd = cwd;
     pendingMessage = null;
@@ -174,7 +177,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v57';
+  if (versionEl) versionEl.textContent = 'v61';
 }
 
 function setupInput() {
@@ -234,6 +237,8 @@ function hideNoSessionPrompt() {
 }
 
 function sendMessage() {
+  if (watchMode) return; // read-only in watch mode
+
   const input = document.getElementById('message-input');
   const text = input.value.trim();
   const images = imageHandler.getFilenames();
@@ -440,6 +445,31 @@ function handleMessage(msg) {
     case 'process_exit':
       break;
 
+    // Watch mode: initial history dump from JSONL file
+    case 'watch_history':
+      chat.clear().then(() => {
+        watchMode = true;
+        enterWatchMode(msg.sessionId);
+        for (const m of msg.messages || []) {
+          renderWatchMessage(m);
+        }
+        chat.forceScrollToBottom();
+      });
+      break;
+
+    // Watch mode: live update — new messages from the session file
+    case 'watch_update':
+      for (const m of msg.messages || []) {
+        renderWatchMessage(m);
+      }
+      chat.scrollToBottom();
+      break;
+
+    // Watch mode stopped
+    case 'watch_stopped':
+      if (watchMode) exitWatchMode();
+      break;
+
     // Session busy/idle status update (from any session)
     case 'session_status':
       sessionUI.updateSessionBusy(msg.sessionId, msg.busy);
@@ -580,6 +610,42 @@ async function initNtfyToggle() {
 function updateNtfyButton(btn, enabled) {
   btn.style.opacity = enabled ? '0.9' : '0.3';
   btn.title = enabled ? 'Watch notifications: ON' : 'Watch notifications: OFF';
+}
+
+// ── Watch Mode (observe live sessions) ──
+
+function enterWatchMode(sessionId) {
+  watchMode = true;
+  hideNoSessionPrompt(); // show messages + input area
+  document.getElementById('input-area').classList.add('watch-mode');
+  // Add a watch mode banner
+  let banner = document.getElementById('watch-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'watch-banner';
+    banner.innerHTML = '<span class="watch-dot"></span> Watching live session';
+    document.getElementById('input-area').prepend(banner);
+  }
+  banner.style.display = '';
+}
+
+function exitWatchMode() {
+  watchMode = false;
+  wsClient.send({ type: 'unwatch_session' });
+  document.getElementById('input-area').classList.remove('watch-mode');
+  const banner = document.getElementById('watch-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function renderWatchMessage(m) {
+  if (!m) return;
+  if (m.type === 'user' && m.text) {
+    chat.addUserMessage(m.text);
+  } else if (m.type === 'assistant' && m.text) {
+    chat.addAssistantText(m.text);
+  } else if (m.type === 'tool_use' && m.toolName) {
+    chat.addToolUse(m.toolName);
+  }
 }
 
 // Register service worker

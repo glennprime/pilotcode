@@ -6,7 +6,7 @@ import { basename, extname, join, resolve } from 'path';
 import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
 import { sessionBusyState, getSessionBusyState } from '../ws/handler.js';
-import { discoverExternalSessions } from '../claude/sessions.js';
+import { discoverExternalSessions, discoverActiveTerminalSessions } from '../claude/sessions.js';
 import { requireAuth } from './auth.js';
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
@@ -84,6 +84,12 @@ export function createApiRouter(manager: SessionManager): Router {
     );
 
     res.json(grouped);
+  });
+
+  router.get('/api/active-sessions', requireAuth, (_req: Request, res: Response) => {
+    const managedPids = manager.listManagedPids();
+    const active = discoverActiveTerminalSessions(managedPids);
+    res.json(active);
   });
 
   router.patch('/api/sessions/:id', requireAuth, (req: Request, res: Response) => {

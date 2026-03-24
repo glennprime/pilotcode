@@ -9,8 +9,12 @@ import { ClaudeProcess } from '../claude/process.js';
 import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DATA_DIR } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
 import { findValidSession, findSessionById } from '../claude/sessions.js';
+import { findSessionFile, readSessionFile, watchSessionFile } from '../claude/watcher.js';
 import { log, sessionLog } from '../logger.js';
 import { getNtfyTopic } from '../config.js';
+
+// Track active watch-mode sessions per WebSocket
+const activeWatchers = new Map<WebSocket, () => void>();
 
 const HISTORY_DIR = join(DATA_DIR, 'history');
 mkdirSync(HISTORY_DIR, { recursive: true });
@@ -349,6 +353,17 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           }, (proc) => { connState.pendingProc = proc; });
           break;
 
+        case 'watch_session':
+          detachFromSession(ws, connState);
+          stopWatcher(ws);
+          handleWatchSession(ws, msg);
+          break;
+
+        case 'unwatch_session':
+          stopWatcher(ws);
+          ws.send(JSON.stringify({ type: 'watch_stopped' }));
+          break;
+
         case 'rejoin_session':
           detachFromSession(ws, connState);
           handleRejoinSession(ws, msg, manager, (proc, sid) => {
@@ -392,6 +407,7 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
 
     ws.on('close', () => {
       removeClient(ws);
+      stopWatcher(ws);
     });
   });
 }
@@ -1241,6 +1257,53 @@ function appendHistoryEntry(sessionId: string, entry: { role: string; text: stri
     writeFileSync(file, JSON.stringify(history));
   } catch {
     // Don't crash on history save failure
+  }
+}
+
+// ── Watch Mode ──
+
+function handleWatchSession(ws: WebSocket, msg: WSMessage): void {
+  const { sessionId, cwd } = msg;
+  if (!sessionId) {
+    ws.send(JSON.stringify({ type: 'error', error: 'sessionId required' }));
+    return;
+  }
+
+  const filePath = findSessionFile(sessionId, cwd);
+  if (!filePath) {
+    ws.send(JSON.stringify({ type: 'error', error: 'Session file not found.' }));
+    return;
+  }
+
+  log('ws', `Watch mode: ${sessionId.slice(0, 8)} → ${filePath}`);
+
+  // Read existing content and send as initial history
+  const { messages, byteOffset } = readSessionFile(filePath);
+  ws.send(JSON.stringify({
+    type: 'watch_history',
+    sessionId,
+    messages,
+  }));
+
+  // Start watching for new content
+  const cleanup = watchSessionFile(filePath, byteOffset, (newMessages) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'watch_update',
+        sessionId,
+        messages: newMessages,
+      }));
+    }
+  });
+
+  activeWatchers.set(ws, cleanup);
+}
+
+function stopWatcher(ws: WebSocket): void {
+  const cleanup = activeWatchers.get(ws);
+  if (cleanup) {
+    cleanup();
+    activeWatchers.delete(ws);
   }
 }
 

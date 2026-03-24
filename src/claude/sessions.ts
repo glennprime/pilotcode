@@ -1,4 +1,5 @@
 import { existsSync, openSync, readSync, closeSync, readdirSync, readFileSync, statSync } from 'fs';
+import { execSync } from 'child_process';
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 import { sessionLog } from '../logger.js';
@@ -234,4 +235,87 @@ export function findSessionById(sessionId: string): { cwd: string; sessionId: st
   } catch { /* ignore */ }
 
   return null;
+}
+
+export interface ActiveTerminalSession {
+  pid: number;
+  cwd: string;
+  sessionId: string;
+  lastModified: string;
+  summary: string;
+  sizeBytes: number;
+}
+
+/**
+ * Find Claude CLI processes running in terminals (not managed by PilotCode).
+ * Uses `ps` to find processes and `lsof` to get their working directories.
+ */
+export function discoverActiveTerminalSessions(managedPids: Set<number>): ActiveTerminalSession[] {
+  const results: ActiveTerminalSession[] = [];
+
+  try {
+    // Find claude CLI processes via ps, then filter in JS to avoid shell escaping issues
+    const psOutput = execSync('ps -eo pid,command', { encoding: 'utf-8', timeout: 5000 });
+    const claudeLines = psOutput.split('\n').filter(line => {
+      const cmd = line.trim().split(/\s+/).slice(1).join(' ');
+      // Match bare 'claude' or 'claude --flags...' but not Claude.app or other binaries
+      return (cmd === 'claude' || cmd.startsWith('claude ')) && !cmd.includes('Claude.app');
+    });
+
+    if (claudeLines.length === 0) return results;
+
+    // Deduplicate by CWD — multiple processes can serve the same project
+    const seenCwds = new Set<string>();
+
+    for (const line of claudeLines) {
+      const pid = parseInt(line.trim().split(/\s+/)[0]);
+      if (isNaN(pid) || managedPids.has(pid)) continue;
+
+      // Get CWD of this process
+      let cwd: string;
+      try {
+        const lsofOutput = execSync(
+          `/usr/sbin/lsof -a -d cwd -Fn -p ${pid}`,
+          { encoding: 'utf-8', timeout: 3000 }
+        );
+        const cwdLine = lsofOutput.split('\n').find(l => l.startsWith('n'));
+        if (!cwdLine) continue;
+        cwd = cwdLine.slice(1);
+      } catch { continue; }
+
+      if (seenCwds.has(cwd)) continue;
+      seenCwds.add(cwd);
+
+      // Find the most recent JSONL file for this project
+      const slug = resolve(cwd).replace(/[\\\/.: _]/g, '-');
+      const projectDir = join(CLAUDE_PROJECTS_DIR, slug);
+      if (!existsSync(projectDir)) continue;
+
+      try {
+        const files = readdirSync(projectDir)
+          .filter(f => f.endsWith('.jsonl'))
+          .map(f => ({ name: f.replace('.jsonl', ''), path: join(projectDir, f) }))
+          .filter(f => UUID_RE.test(f.name))
+          .sort((a, b) => statSync(b.path).mtimeMs - statSync(a.path).mtimeMs);
+
+        if (files.length === 0) continue;
+
+        const meta = extractSessionMeta(files[0].path, files[0].name, slug);
+        if (meta) {
+          results.push({
+            pid,
+            cwd,
+            sessionId: meta.id,
+            lastModified: meta.lastModified,
+            summary: meta.summary,
+            sizeBytes: meta.sizeBytes,
+          });
+        }
+      } catch { /* skip */ }
+    }
+  } catch {
+    // pgrep/ps returns exit code 1 if no matches — that's fine
+  }
+
+  return results;
 }

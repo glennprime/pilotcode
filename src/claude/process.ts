@@ -27,6 +27,10 @@ export class ClaudeProcess extends EventEmitter {
     this.setMaxListeners(50); // Prevent warnings from multiple broadcast listeners
   }
 
+  get pid(): number | undefined {
+    return this.child?.pid;
+  }
+
   start(): void {
     const args = [
       '--output-format', 'stream-json',

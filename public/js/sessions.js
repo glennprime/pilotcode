@@ -29,6 +29,7 @@ export class SessionUI {
     this.drawer.classList.add('open');
     this.overlay.classList.add('active');
     this.refreshList();
+    this.refreshExternalList(); // fetch external sessions once on open
     // Poll while drawer is open so busy dots stay fresh
     this._pollTimer = setInterval(() => this.refreshList(), 3000);
   }
@@ -49,7 +50,6 @@ export class SessionUI {
       const sessions = await res.json();
       this.renderList(sessions);
     } catch { /* offline */ }
-    this.refreshExternalList();
   }
 
   renderList(sessions) {
@@ -401,53 +401,49 @@ export class SessionUI {
 
   async refreshExternalList() {
     try {
-      const res = await fetch('/api/external-sessions');
+      const res = await fetch('/api/active-sessions');
       if (!res.ok) return;
-      const groups = await res.json();
-      this.renderExternalSidebar(groups);
+      const sessions = await res.json();
+      this.renderActiveSessions(sessions);
     } catch { /* offline */ }
   }
 
-  renderExternalSidebar(groups) {
-    const totalCount = groups.reduce((sum, g) => sum + g.sessions.length, 0);
-    this.externalCount.textContent = totalCount;
+  renderActiveSessions(sessions) {
+    this.externalCount.textContent = sessions.length;
     this.externalList.innerHTML = '';
 
-    if (totalCount === 0) {
+    if (sessions.length === 0) {
       this.externalSection.style.display = 'none';
       return;
     }
 
     this.externalSection.style.display = '';
 
-    for (const group of groups) {
-      const dirName = group.cwd.split('/').filter(Boolean).pop() || group.cwd;
-      const header = document.createElement('div');
-      header.className = 'ext-sidebar-group';
-      header.textContent = dirName;
-      header.title = group.cwd;
-      this.externalList.appendChild(header);
-
-      for (const s of group.sessions) {
-        const el = document.createElement('div');
-        el.className = 'ext-sidebar-item';
-        el.innerHTML = `
-          <div class="ext-sidebar-summary">${escapeHtml(s.summary || '(no preview)')}</div>
-          <div class="ext-sidebar-meta">${timeAgo(s.lastModified)} &middot; ${formatSize(s.sizeBytes)}</div>
-        `;
-        el.onclick = () => this.connectFromSidebar(s.id, group.cwd);
-        this.externalList.appendChild(el);
-      }
+    for (const s of sessions) {
+      const dirName = s.cwd.split('/').filter(Boolean).pop() || s.cwd;
+      const el = document.createElement('div');
+      el.className = 'ext-active-item';
+      el.innerHTML = `
+        <div class="ext-active-row">
+          <span class="active-dot busy"></span>
+          <span class="ext-active-name">${escapeHtml(dirName)}</span>
+        </div>
+        <div class="ext-active-meta">${escapeHtml(s.summary || '')} &middot; ${timeAgo(s.lastModified)}</div>
+      `;
+      el.title = s.cwd;
+      el.onclick = () => this.watchFromSidebar(s.sessionId, s.cwd);
+      this.externalList.appendChild(el);
     }
   }
 
-  connectFromSidebar(sessionId, cwd) {
+  watchFromSidebar(sessionId, cwd) {
     const name = cwd.split('/').filter(Boolean).pop() || 'External Session';
-    this.currentSessionId = '__creating__';
-    this.wsClient.setActiveSession(null);
-    this.wsClient.send({ type: 'connect_external_session', sessionId, cwd, name });
+    this.currentSessionId = `watch:${sessionId}`;
+    this.wsClient.setActiveSession(null); // don't filter by session — watch messages have no _sid
+    this.wsClient.send({ type: 'watch_session', sessionId, cwd });
     this.closeDrawer();
-    this.onSessionChange(name, null);
+    this.onSessionChange(name, null, cwd);
+    document.getElementById('session-name').textContent = `${name}`;
   }
 
   // ── Connect to External Session ──

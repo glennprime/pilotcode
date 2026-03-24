@@ -86,6 +86,15 @@ export class SessionManager {
     return Array.from(this.processes.keys());
   }
 
+  /** Return PIDs of all Claude processes managed by PilotCode. */
+  listManagedPids(): Set<number> {
+    const pids = new Set<number>();
+    for (const proc of this.processes.values()) {
+      if (proc.pid) pids.add(proc.pid);
+    }
+    return pids;
+  }
+
   // Session metadata persistence
   loadSessions(): SessionMeta[] {
     if (!existsSync(SESSIONS_FILE)) return [];
