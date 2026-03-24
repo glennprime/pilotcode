@@ -68,7 +68,6 @@
     <div id="drawer-header">
       <h2>Sessions</h2>
       <div class="drawer-header-btns">
-        <button id="connect-session-btn">&#128279; Connect</button>
         <button id="new-session-btn">+ New</button>
       </div>
     </div>
@@ -114,33 +113,6 @@
     </div>
   </div>
 
-  <!-- Connect Session Modal -->
-  <div id="connect-session-modal">
-    <div class="modal-content connect-modal">
-      <h3>Connect to Session</h3>
-      <div class="connect-tabs">
-        <button class="connect-tab active" data-tab="browse">Browse</button>
-        <button class="connect-tab" data-tab="manual">Manual ID</button>
-      </div>
-      <div id="connect-browse-tab" class="connect-tab-content">
-        <div id="external-sessions-loading" style="display:none;">
-          <div class="thinking-spinner" style="margin:20px auto;"></div>
-        </div>
-        <div id="external-sessions-list"></div>
-        <div id="external-sessions-empty" style="display:none;">No external sessions found.</div>
-      </div>
-      <div id="connect-manual-tab" class="connect-tab-content" style="display:none;">
-        <label for="connect-session-id">Session UUID</label>
-        <input id="connect-session-id" type="text" placeholder="e.g. 2537435f-b8bf-4a60-b8c9-5f8e414fc3fc" spellcheck="false">
-        <label for="connect-session-name">Name (optional)</label>
-        <input id="connect-session-name" type="text" placeholder="My External Session">
-      </div>
-      <div class="modal-actions">
-        <button id="connect-modal-cancel" class="btn-secondary">Cancel</button>
-        <button id="connect-modal-go" class="btn-primary">Connect</button>
-      </div>
-    </div>
-  </div>
 
   <script type="module" src="/js/app.js"></script>
 </body>
