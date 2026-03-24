@@ -48,6 +48,7 @@ export class SessionUI {
       const res = await fetch('/api/sessions');
       if (!res.ok) return;
       const sessions = await res.json();
+      this.pilotcodeSessions = sessions; // cache for active session matching
       this.renderList(sessions);
     } catch { /* offline */ }
   }
@@ -431,7 +432,16 @@ export class SessionUI {
         <div class="ext-active-meta">${escapeHtml(s.summary || '')} &middot; ${timeAgo(s.lastModified)}</div>
       `;
       el.title = s.cwd;
-      el.onclick = () => this.watchFromSidebar(s.sessionId, s.cwd);
+      // If there's a matching PilotCode session for this cwd, resume it instead of watching
+      const matchingPC = (this.pilotcodeSessions || []).find(pc => pc.cwd === s.cwd);
+      if (matchingPC) {
+        el.onclick = () => {
+          this.resumeSession(matchingPC.id, matchingPC.name, matchingPC.cwd);
+          this.closeDrawer();
+        };
+      } else {
+        el.onclick = () => this.watchFromSidebar(s.sessionId, s.cwd);
+      }
       this.externalList.appendChild(el);
     }
   }
@@ -439,11 +449,23 @@ export class SessionUI {
   watchFromSidebar(sessionId, cwd) {
     const name = cwd.split('/').filter(Boolean).pop() || 'External Session';
     this.currentSessionId = `watch:${sessionId}`;
-    this.wsClient.setActiveSession(null); // don't filter by session — watch messages have no _sid
+    this.watchMeta = { sessionId, cwd, name }; // for connect-on-send
+    this.wsClient.setActiveSession(null);
     this.wsClient.send({ type: 'watch_session', sessionId, cwd });
     this.closeDrawer();
     this.onSessionChange(name, null, cwd);
     document.getElementById('session-name').textContent = `${name}`;
+  }
+
+  /** Transition from watch mode to a connected session. */
+  connectWatchedSession() {
+    const meta = this.watchMeta;
+    if (!meta) return;
+    this.watchMeta = null;
+    this.currentSessionId = '__creating__';
+    this.wsClient.setActiveSession(null);
+    this.wsClient.send({ type: 'connect_external_session', sessionId: meta.sessionId, cwd: meta.cwd, name: meta.name });
+    this.onSessionChange(meta.name, '__creating__', meta.cwd);
   }
 
   // ── Connect to External Session ──

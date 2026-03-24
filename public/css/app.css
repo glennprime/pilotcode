@@ -929,30 +929,18 @@ html, body {
 
 
 /* ── Watch Mode ── */
-#input-area.watch-mode {
-  flex-direction: column;
-  align-items: stretch;
-  padding: 0;
-}
-
-#input-area.watch-mode #message-input,
-#input-area.watch-mode #send-btn,
-#input-area.watch-mode #stop-btn,
-#input-area.watch-mode #image-btn {
-  display: none;
-}
-
 #watch-banner {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 16px;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border);
+  padding: 8px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
   color: var(--green);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  width: 100%;
 }
 
 .watch-dot {

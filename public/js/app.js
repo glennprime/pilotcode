@@ -177,7 +177,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v61';
+  if (versionEl) versionEl.textContent = 'v66';
 }
 
 function setupInput() {
@@ -237,7 +237,21 @@ function hideNoSessionPrompt() {
 }
 
 function sendMessage() {
-  if (watchMode) return; // read-only in watch mode
+  // In watch mode, typing connects to the session
+  if (watchMode) {
+    const input = document.getElementById('message-input');
+    const text = input.value.trim();
+    if (!text) return;
+    exitWatchMode();
+    pendingMessage = { text, images: [], pendingImages: [] };
+    creatingSession = true;
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('send-btn').disabled = true;
+    chat.showThinking('Connecting...');
+    sessionUI.connectWatchedSession();
+    return;
+  }
 
   const input = document.getElementById('message-input');
   const text = input.value.trim();
@@ -616,23 +630,23 @@ function updateNtfyButton(btn, enabled) {
 
 function enterWatchMode(sessionId) {
   watchMode = true;
-  hideNoSessionPrompt(); // show messages + input area
-  document.getElementById('input-area').classList.add('watch-mode');
-  // Add a watch mode banner
+  hideNoSessionPrompt();
+  // Show banner above input — input stays visible for connect-on-send
   let banner = document.getElementById('watch-banner');
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'watch-banner';
-    banner.innerHTML = '<span class="watch-dot"></span> Watching live session';
-    document.getElementById('input-area').prepend(banner);
+    const inputArea = document.getElementById('input-area');
+    inputArea.parentNode.insertBefore(banner, inputArea);
   }
+  banner.innerHTML = '<span class="watch-dot"></span> Watching — type to connect';
   banner.style.display = '';
 }
 
 function exitWatchMode() {
   watchMode = false;
   wsClient.send({ type: 'unwatch_session' });
-  document.getElementById('input-area').classList.remove('watch-mode');
+  document.getElementById('input-area').style.display = '';
   const banner = document.getElementById('watch-banner');
   if (banner) banner.style.display = 'none';
 }
