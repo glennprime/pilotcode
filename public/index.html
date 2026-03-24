@@ -72,7 +72,17 @@
         <button id="new-session-btn">+ New</button>
       </div>
     </div>
-    <div id="session-list"></div>
+    <div id="drawer-content">
+      <div id="session-list"></div>
+      <div id="external-section" style="display:none">
+        <div class="drawer-section-header" id="external-section-toggle">
+          <span class="section-label">On This Mac</span>
+          <span class="section-count" id="external-count">0</span>
+          <span class="section-chevron">&#9656;</span>
+        </div>
+        <div id="external-list"></div>
+      </div>
+    </div>
     <div id="drawer-footer">
       <button id="guide-btn">? Guide</button>
       <button id="force-refresh-btn">Refresh App</button>

@@ -22,6 +22,7 @@ export class SessionUI {
     this.selectedExternal = null;
     this.setupCwdPicker();
     this.setupConnectTabs();
+    this.setupExternalSection();
   }
 
   openDrawer() {
@@ -48,6 +49,7 @@ export class SessionUI {
       const sessions = await res.json();
       this.renderList(sessions);
     } catch { /* offline */ }
+    this.refreshExternalList();
   }
 
   renderList(sessions) {
@@ -372,6 +374,80 @@ export class SessionUI {
     this.wsClient.send({ type: 'resume_session', sessionId });
     document.getElementById('session-name').textContent = name || sessionId.slice(0, 8);
     this.onSessionChange(name, sessionId, cwd);
+  }
+
+  // ── External Sessions in Sidebar ──
+
+  setupExternalSection() {
+    this.externalSection = document.getElementById('external-section');
+    this.externalList = document.getElementById('external-list');
+    this.externalCount = document.getElementById('external-count');
+    this.externalToggle = document.getElementById('external-section-toggle');
+
+    // Restore collapsed state (default: expanded)
+    const collapsed = localStorage.getItem('pilotcode_external_collapsed') === 'true';
+    if (collapsed) {
+      this.externalList.classList.add('collapsed');
+    } else {
+      this.externalToggle.classList.add('expanded');
+    }
+
+    this.externalToggle.onclick = () => {
+      const isCollapsed = this.externalList.classList.toggle('collapsed');
+      this.externalToggle.classList.toggle('expanded', !isCollapsed);
+      localStorage.setItem('pilotcode_external_collapsed', String(isCollapsed));
+    };
+  }
+
+  async refreshExternalList() {
+    try {
+      const res = await fetch('/api/external-sessions');
+      if (!res.ok) return;
+      const groups = await res.json();
+      this.renderExternalSidebar(groups);
+    } catch { /* offline */ }
+  }
+
+  renderExternalSidebar(groups) {
+    const totalCount = groups.reduce((sum, g) => sum + g.sessions.length, 0);
+    this.externalCount.textContent = totalCount;
+    this.externalList.innerHTML = '';
+
+    if (totalCount === 0) {
+      this.externalSection.style.display = 'none';
+      return;
+    }
+
+    this.externalSection.style.display = '';
+
+    for (const group of groups) {
+      const dirName = group.cwd.split('/').filter(Boolean).pop() || group.cwd;
+      const header = document.createElement('div');
+      header.className = 'ext-sidebar-group';
+      header.textContent = dirName;
+      header.title = group.cwd;
+      this.externalList.appendChild(header);
+
+      for (const s of group.sessions) {
+        const el = document.createElement('div');
+        el.className = 'ext-sidebar-item';
+        el.innerHTML = `
+          <div class="ext-sidebar-summary">${escapeHtml(s.summary || '(no preview)')}</div>
+          <div class="ext-sidebar-meta">${timeAgo(s.lastModified)} &middot; ${formatSize(s.sizeBytes)}</div>
+        `;
+        el.onclick = () => this.connectFromSidebar(s.id, group.cwd);
+        this.externalList.appendChild(el);
+      }
+    }
+  }
+
+  connectFromSidebar(sessionId, cwd) {
+    const name = cwd.split('/').filter(Boolean).pop() || 'External Session';
+    this.currentSessionId = '__creating__';
+    this.wsClient.setActiveSession(null);
+    this.wsClient.send({ type: 'connect_external_session', sessionId, cwd, name });
+    this.closeDrawer();
+    this.onSessionChange(name, null);
   }
 
   // ── Connect to External Session ──
