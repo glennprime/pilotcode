@@ -1126,6 +1126,7 @@ html, body {
 #drawer-content {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 #session-list {

@@ -325,6 +325,19 @@ export class SessionUI {
     };
 
     // ── Touch events (iOS Safari / mobile) ──
+    // Only attach non-passive touchmove/touchend DURING a drag so that
+    // normal list scrolling isn't blocked by iOS Safari's scroll optimization.
+    const onTouchMove = (e) => {
+      e.preventDefault(); // prevent scroll while dragging
+      moveDrag(e.touches[0].clientY);
+    };
+    const onTouchEnd = () => {
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener('touchcancel', onTouchEnd);
+      endDrag();
+    };
+
     list.addEventListener('touchstart', (e) => {
       const handle = e.target.closest('.drag-handle');
       if (!handle) return;
@@ -333,16 +346,10 @@ export class SessionUI {
       e.preventDefault();
       e.stopPropagation();
       startDrag(item, e.touches[0].clientY);
+      document.addEventListener('touchmove', onTouchMove, { passive: false });
+      document.addEventListener('touchend', onTouchEnd);
+      document.addEventListener('touchcancel', onTouchEnd);
     }, { passive: false });
-
-    list.addEventListener('touchmove', (e) => {
-      if (!this._dragState) return;
-      e.preventDefault(); // prevent scroll while dragging
-      moveDrag(e.touches[0].clientY);
-    }, { passive: false });
-
-    list.addEventListener('touchend', endDrag);
-    list.addEventListener('touchcancel', endDrag);
 
     // ── Mouse events (desktop) ──
     list.addEventListener('mousedown', (e) => {
