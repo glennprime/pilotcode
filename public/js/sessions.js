@@ -304,7 +304,10 @@ export class SessionUI {
         const [moved] = ids.splice(s.index, 1);
         ids.splice(s.currentIndex, 0, moved);
         this.saveSessionOrder(ids);
-        this.refreshList();
+        // Re-render immediately from cached data — no server round-trip
+        if (this.pilotcodeSessions) {
+          this.renderList([...this.pilotcodeSessions]);
+        }
       }
 
       this._dragState = null;
