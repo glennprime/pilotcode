@@ -13,6 +13,17 @@ export class WSClient {
   }
 
   connect() {
+    // Close any existing connection to prevent orphaned WebSockets.
+    // Without this, the old socket's onclose fires and calls connect() again,
+    // creating duplicate connections that each receive broadcasts independently.
+    if (this.ws) {
+      this.ws.onclose = null; // prevent recursive reconnect from old socket
+      this.ws.onmessage = null;
+      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.close();
+      }
+    }
+
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${proto}//${location.host}`;
 
