@@ -36,6 +36,22 @@ export class Chat {
         this.onEdit(text);
       }
     });
+
+    // Scroll-to-bottom button
+    this.scrollBtn = document.getElementById('scroll-bottom-btn');
+    if (this.scrollBtn) {
+      this.scrollBtn.onclick = () => this.forceScrollToBottom();
+      let scrollTicking = false;
+      this.messagesEl.addEventListener('scroll', () => {
+        if (!scrollTicking) {
+          requestAnimationFrame(() => {
+            this._updateScrollBtn();
+            scrollTicking = false;
+          });
+          scrollTicking = true;
+        }
+      }, { passive: true });
+    }
   }
 
   setSession(sessionId) {
@@ -937,15 +953,26 @@ export class Chat {
 
   /** Scroll to bottom only if the user hasn't scrolled up to read history. */
   scrollToBottom() {
-    if (!this.isNearBottom()) return;
-    this.forceScrollToBottom();
+    if (this.isNearBottom()) {
+      this.forceScrollToBottom();
+    } else {
+      this._updateScrollBtn();
+    }
   }
 
   /** Unconditionally scroll to bottom (used after session switch, history load, etc.). */
   forceScrollToBottom() {
     requestAnimationFrame(() => {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      // scroll event will fire and hide the button
     });
+  }
+
+  /** Show/hide the scroll-to-bottom button based on scroll position. */
+  _updateScrollBtn() {
+    if (this.scrollBtn) {
+      this.scrollBtn.classList.toggle('visible', !this.isNearBottom());
+    }
   }
 }
 

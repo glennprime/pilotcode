@@ -16,8 +16,10 @@ export class SessionUI {
     document.getElementById('modal-create').onclick = () => this.createSession();
     this.selectedCwd = null;
     this.currentBrowsePath = null;
+    this.isDragging = false;
     this.setupCwdPicker();
     this.setupExternalSection();
+    this.setupDragReorder();
   }
 
   openDrawer() {
@@ -39,6 +41,7 @@ export class SessionUI {
   }
 
   async refreshList() {
+    if (this.isDragging) return; // don't re-render during drag
     try {
       const res = await fetch('/api/sessions');
       if (!res.ok) return;
@@ -49,13 +52,28 @@ export class SessionUI {
   }
 
   renderList(sessions) {
+    if (this.isDragging) return;
     this.list.innerHTML = '';
     if (sessions.length === 0) {
       this.list.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px;">No sessions yet. Send a message or tap "+ New".</div>';
       return;
     }
 
-    sessions.sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed));
+    // Apply custom order if saved, otherwise sort by last used
+    const customOrder = this.getSessionOrder();
+    if (customOrder) {
+      const orderMap = new Map(customOrder.map((id, i) => [id, i]));
+      sessions.sort((a, b) => {
+        const ai = orderMap.has(a.id) ? orderMap.get(a.id) : -1;
+        const bi = orderMap.has(b.id) ? orderMap.get(b.id) : -1;
+        if (ai === -1 && bi === -1) return new Date(b.lastUsed) - new Date(a.lastUsed);
+        if (ai === -1) return -1; // new sessions at top
+        if (bi === -1) return 1;
+        return ai - bi;
+      });
+    } else {
+      sessions.sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed));
+    }
 
     for (const s of sessions) {
       const el = document.createElement('div');
@@ -63,6 +81,7 @@ export class SessionUI {
       el.dataset.sessionId = s.id;
       el.innerHTML = `
         <div class="session-item-row">
+          <span class="drag-handle">&#x2807;</span>
           <div class="session-item-name">
             ${s.busy ? '<span class="active-dot busy"></span>' : s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
           </div>
@@ -204,6 +223,120 @@ export class SessionUI {
     };
 
     el.appendChild(sheet);
+  }
+
+  // ── Drag-to-Reorder ──
+
+  setupDragReorder() {
+    this._onDragMove = (e) => {
+      const s = this._dragState;
+      if (!s) return;
+
+      const dy = e.clientY - s.startY;
+      s.item.style.transform = `translateY(${dy}px)`;
+      s.item.style.zIndex = '100';
+      s.item.style.position = 'relative';
+
+      const dragCenter = s.itemRect.top + s.itemRect.height / 2 + dy;
+
+      // Find where the dragged item would land
+      let newIndex = s.index;
+      for (let i = 0; i < s.rects.length; i++) {
+        if (i === s.index) continue;
+        const center = s.rects[i].top + s.rects[i].height / 2;
+        if (s.index < i && dragCenter > center) newIndex = i;
+        if (s.index > i && dragCenter < center && i < newIndex) newIndex = i;
+      }
+
+      // Shift displaced items with smooth animation
+      for (let i = 0; i < s.allItems.length; i++) {
+        if (i === s.index) continue;
+        const shouldShift =
+          (s.index < newIndex && i > s.index && i <= newIndex) ||
+          (s.index > newIndex && i < s.index && i >= newIndex);
+        if (shouldShift) {
+          const dir = s.index < newIndex ? -1 : 1;
+          s.allItems[i].style.transform = `translateY(${dir * s.itemRect.height}px)`;
+          s.allItems[i].style.transition = 'transform 0.15s ease';
+        } else {
+          s.allItems[i].style.transform = '';
+          s.allItems[i].style.transition = 'transform 0.15s ease';
+        }
+      }
+
+      s.currentIndex = newIndex;
+    };
+
+    this._onDragEnd = () => {
+      const s = this._dragState;
+      if (!s) return;
+
+      document.removeEventListener('pointermove', this._onDragMove);
+      document.removeEventListener('pointerup', this._onDragEnd);
+      document.removeEventListener('pointercancel', this._onDragEnd);
+
+      // Reset all transforms
+      s.allItems.forEach(el => {
+        el.style.transform = '';
+        el.style.transition = '';
+        el.style.zIndex = '';
+        el.style.position = '';
+      });
+      s.item.classList.remove('dragging');
+
+      if (s.currentIndex !== s.index) {
+        const ids = s.allItems.map(el => el.dataset.sessionId);
+        const [moved] = ids.splice(s.index, 1);
+        ids.splice(s.currentIndex, 0, moved);
+        this.saveSessionOrder(ids);
+        this.refreshList();
+      }
+
+      this._dragState = null;
+      this.isDragging = false;
+    };
+
+    this.list.addEventListener('pointerdown', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+
+      const item = handle.closest('.session-item');
+      if (!item) return;
+
+      e.preventDefault();
+
+      const allItems = [...this.list.querySelectorAll('.session-item')];
+      const rects = allItems.map(el => el.getBoundingClientRect());
+      const index = allItems.indexOf(item);
+
+      this._dragState = {
+        item,
+        index,
+        currentIndex: index,
+        startY: e.clientY,
+        itemRect: rects[index],
+        allItems,
+        rects,
+      };
+
+      item.classList.add('dragging');
+      this.isDragging = true;
+
+      document.addEventListener('pointermove', this._onDragMove);
+      document.addEventListener('pointerup', this._onDragEnd);
+      document.addEventListener('pointercancel', this._onDragEnd);
+    });
+  }
+
+  saveSessionOrder(ids) {
+    localStorage.setItem('pilotcode_session_order', JSON.stringify(ids));
+  }
+
+  getSessionOrder() {
+    try {
+      const order = localStorage.getItem('pilotcode_session_order');
+      return order ? JSON.parse(order) : null;
+    } catch { return null; }
   }
 
   showNewSessionModal() {

@@ -177,7 +177,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v70';
+  if (versionEl) versionEl.textContent = 'v71';
 }
 
 function setupInput() {
@@ -665,9 +665,26 @@ function renderWatchMessage(m) {
   }
 }
 
-// Register service worker
+// Register service worker with auto-update for iOS Safari.
+// iOS checks for SW updates very lazily, especially in PWA mode.
+// We force an update check every time the user returns to the app,
+// and auto-reload when a new SW takes control.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    // Force update check when user returns (critical for iOS Safari PWA)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update();
+    });
+  }).catch(() => {});
+
+  // Auto-reload when a new service worker activates
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!swRefreshing) {
+      swRefreshing = true;
+      location.reload();
+    }
+  });
 }
 
 // Dev test helpers — call from browser console
