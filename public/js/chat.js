@@ -18,6 +18,7 @@ export class Chat {
     this.toolCards = new Map(); // tool_use id -> DOM element
     this.suppressReplay = false; // true during buffer replay after reconnect
     this.sessionCwd = ''; // working directory for resolving relative paths
+    this._scrollPositions = new Map(); // sessionId -> scrollTop
 
     // Callbacks for user message actions (wired by app.js)
     this.onResend = null; // (text) => void
@@ -829,6 +830,11 @@ export class Chat {
   }
 
   async switchSession(newSessionId) {
+    // Save scroll position of the session we're leaving
+    if (this.sessionId) {
+      this._scrollPositions.set(this.sessionId, this.messagesEl.scrollTop);
+    }
+
     // Clear UI state synchronously first — before any await —
     // so server messages (session_rejoined, session_busy) that arrive
     // during async operations won't get overridden.
@@ -860,6 +866,13 @@ export class Chat {
     if (this.thinkingEl) {
       this.messagesEl.appendChild(this.thinkingEl);
       this.forceScrollToBottom();
+    } else if (newSessionId && this._scrollPositions.has(newSessionId)) {
+      // Restore previous scroll position for this session
+      const savedPos = this._scrollPositions.get(newSessionId);
+      requestAnimationFrame(() => {
+        this.messagesEl.scrollTop = savedPos;
+        this._updateScrollBtn();
+      });
     }
   }
 

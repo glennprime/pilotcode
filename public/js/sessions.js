@@ -100,6 +100,7 @@ export class SessionUI {
 
       // Tap anywhere else to switch session
       el.onclick = () => {
+        if (this.isDragging) return; // don't switch during drag
         this.resumeSession(s.id, s.name, s.cwd);
         this.closeDrawer();
       };
@@ -228,7 +229,41 @@ export class SessionUI {
   // ── Drag-to-Reorder ──
 
   setupDragReorder() {
-    this._onDragMove = (e) => {
+    const list = this.list;
+
+    // All pointer events on the list — pointer capture ensures iOS Safari
+    // delivers pointermove/pointerup even when finger moves outside the element.
+    list.addEventListener('pointerdown', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+
+      const item = handle.closest('.session-item');
+      if (!item) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      list.setPointerCapture(e.pointerId);
+
+      const allItems = [...list.querySelectorAll('.session-item')];
+      const rects = allItems.map(el => el.getBoundingClientRect());
+      const index = allItems.indexOf(item);
+
+      this._dragState = {
+        item,
+        index,
+        currentIndex: index,
+        startY: e.clientY,
+        itemRect: rects[index],
+        allItems,
+        rects,
+        pointerId: e.pointerId,
+      };
+
+      item.classList.add('dragging');
+      this.isDragging = true;
+    });
+
+    list.addEventListener('pointermove', (e) => {
       const s = this._dragState;
       if (!s) return;
 
@@ -265,15 +300,11 @@ export class SessionUI {
       }
 
       s.currentIndex = newIndex;
-    };
+    });
 
-    this._onDragEnd = () => {
+    const endDrag = () => {
       const s = this._dragState;
       if (!s) return;
-
-      document.removeEventListener('pointermove', this._onDragMove);
-      document.removeEventListener('pointerup', this._onDragEnd);
-      document.removeEventListener('pointercancel', this._onDragEnd);
 
       // Reset all transforms
       s.allItems.forEach(el => {
@@ -293,39 +324,13 @@ export class SessionUI {
       }
 
       this._dragState = null;
-      this.isDragging = false;
+      // Delay clearing so the click handler sees isDragging=true and skips
+      setTimeout(() => { this.isDragging = false; }, 50);
     };
 
-    this.list.addEventListener('pointerdown', (e) => {
-      const handle = e.target.closest('.drag-handle');
-      if (!handle) return;
-
-      const item = handle.closest('.session-item');
-      if (!item) return;
-
-      e.preventDefault();
-
-      const allItems = [...this.list.querySelectorAll('.session-item')];
-      const rects = allItems.map(el => el.getBoundingClientRect());
-      const index = allItems.indexOf(item);
-
-      this._dragState = {
-        item,
-        index,
-        currentIndex: index,
-        startY: e.clientY,
-        itemRect: rects[index],
-        allItems,
-        rects,
-      };
-
-      item.classList.add('dragging');
-      this.isDragging = true;
-
-      document.addEventListener('pointermove', this._onDragMove);
-      document.addEventListener('pointerup', this._onDragEnd);
-      document.addEventListener('pointercancel', this._onDragEnd);
-    });
+    list.addEventListener('pointerup', endDrag);
+    list.addEventListener('pointercancel', endDrag);
+    list.addEventListener('lostpointercapture', endDrag);
   }
 
   saveSessionOrder(ids) {
