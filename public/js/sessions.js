@@ -23,6 +23,10 @@ export class SessionUI {
   }
 
   openDrawer() {
+    // Update active highlight on stale DOM immediately (before async fetch)
+    this.list.querySelectorAll('.session-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.sessionId === this.currentSessionId);
+    });
     this.drawer.classList.add('open');
     this.overlay.classList.add('active');
     this.refreshList();
