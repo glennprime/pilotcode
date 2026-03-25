@@ -205,7 +205,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v81';
+  if (versionEl) versionEl.textContent = 'v82';
 }
 
 function setupInput() {
@@ -334,6 +334,7 @@ function doSend(text, images) {
 
   imageHandler.clear();
   chat.showThinking('Thinking...');
+  chat.awaitingFirstResponse = true;
 }
 
 function handleMessage(msg) {
@@ -357,10 +358,12 @@ function handleMessage(msg) {
         chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
         wsClient.send({ type: 'message', content: text });
         chat.showThinking('Thinking...');
+        chat.awaitingFirstResponse = true;
       } else {
         // Session created from modal with no user message.
         // Server sent a kick-start "hello" — show thinking while Claude responds.
         chat.showThinking('Thinking...');
+        chat.awaitingFirstResponse = true;
       }
       sessionUI.refreshList();
       break;
@@ -385,6 +388,7 @@ function handleMessage(msg) {
           sessionGreeted = true;
           chat.addUserMessage(text, pendingImages.length ? pendingImages : undefined);
           chat.showThinking('Thinking...');
+          chat.awaitingFirstResponse = true;
         } else if (!sessionGreeted) {
           // Session created from modal with no message — just mark ready
           sessionGreeted = true;
@@ -529,6 +533,7 @@ function handleMessage(msg) {
       const images = (msg.images || []).map((f) => ({ filename: f, objectUrl: `/data/images/${f}` }));
       chat.addUserMessage(msg.content || '', images.length ? images : undefined);
       chat.showThinking('Thinking...');
+      chat.awaitingFirstResponse = true;
       break;
     }
 

@@ -1255,6 +1255,10 @@ function appendHistoryEntry(sessionId: string, entry: { role: string; text: stri
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) history = parsed;
     }
+    // Dedup: the client also saves history via POST — if it landed first,
+    // the entry is already here. Skip to avoid duplicates from the race.
+    const last = history[history.length - 1];
+    if (last && last.role === entry.role && last.text === entry.text) return;
     history.push(entry);
     // Keep last 500 entries
     if (history.length > 500) history = history.slice(-500);

@@ -17,6 +17,7 @@ export class Chat {
     this.renderedFileLinks = new Set(); // dedup file download links by message id
     this.toolCards = new Map(); // tool_use id -> DOM element
     this.suppressReplay = false; // true during buffer replay after reconnect
+    this.awaitingFirstResponse = false; // true after user sends message, cleared on first assistant msg
     this.sessionCwd = ''; // working directory for resolving relative paths
     this._scrollKey = 'pilotcode_scroll_positions'; // persisted in sessionStorage
 
@@ -100,6 +101,15 @@ export class Chat {
   }
 
   addUserMessage(text, images) {
+    // Dedup: skip if the last DOM message is an identical user message
+    // (can happen from concurrent loadHistory + addUserMessage races)
+    const lastMsg = this.messagesEl.querySelector('.message.user:last-of-type');
+    if (lastMsg && lastMsg.dataset.text === text) {
+      const lastChild = this.messagesEl.lastElementChild;
+      // Only skip if it's literally the most recent element (not buried under assistant msgs)
+      if (lastChild === lastMsg) return;
+    }
+
     const el = this._createUserMessageEl(text, images);
     this.messagesEl.appendChild(el);
     this.forceScrollToBottom();
@@ -108,6 +118,9 @@ export class Chat {
     if (images?.length) {
       entry.images = images.map((i) => i.filename || null).filter(Boolean);
     }
+    // Dedup history: don't push if last entry is identical
+    const lastEntry = this.history[this.history.length - 1];
+    if (lastEntry?.role === 'user' && lastEntry?.text === text) return;
     this.history.push(entry);
     // Save user messages immediately — don't debounce.
     // If the user switches sessions quickly, debounced saves can be lost.
@@ -151,7 +164,7 @@ export class Chat {
       <span class="thinking-label">${escapeHtml(label || 'Thinking...')}</span>
     `;
     this.messagesEl.appendChild(this.thinkingEl);
-    this.scrollToBottom();
+    this.forceScrollToBottom();
   }
 
   updateThinking(label) {
@@ -344,6 +357,7 @@ export class Chat {
         break;
 
       case 'assistant': {
+        this.awaitingFirstResponse = false;
         // Check if this message has text or just tool_use
         const content = msg.message?.content;
         const blocks = Array.isArray(content) ? content : [];
@@ -420,7 +434,14 @@ export class Chat {
       }
 
       case 'result':
-        // Always process — if session is still busy, session_busy re-shows spinner after replay
+        // Guard: if we just sent a message and haven't received any assistant
+        // response yet, this result is stale (from the previous turn). Skip it
+        // so it doesn't hide the thinking indicator for the new turn.
+        if (this.awaitingFirstResponse && !msg.is_error) {
+          this.awaitingFirstResponse = false;
+          break;
+        }
+        this.awaitingFirstResponse = false;
         this.hideThinking();
         this.finishStreaming();
         this.setWorking(false);
