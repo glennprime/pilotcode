@@ -905,7 +905,11 @@ export class Chat {
             break;
         }
       }
-      this.forceScrollToBottom();
+      // Use smart scroll — if the user scrolled up to read history,
+      // don't snap them to the bottom on reconnect-triggered reloads.
+      // On initial load (messages div was empty), isNearBottom() is true
+      // so this still scrolls to show the latest messages.
+      this.scrollToBottom();
     } catch { /* offline */ }
   }
 

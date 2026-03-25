@@ -177,7 +177,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v69';
+  if (versionEl) versionEl.textContent = 'v70';
 }
 
 function setupInput() {
@@ -227,13 +227,16 @@ function showNoSessionPrompt() {
 }
 
 function hideNoSessionPrompt() {
-  document.getElementById('no-session-prompt').classList.remove('active');
+  const prompt = document.getElementById('no-session-prompt');
+  const wasActive = prompt.classList.contains('active');
+  prompt.classList.remove('active');
   document.getElementById('messages').style.display = '';
   document.getElementById('input-area').style.display = '';
   document.getElementById('image-preview').style.display = '';
-  // Scroll to bottom after messages become visible (loadHistory may have
-  // called scrollToBottom while the div was hidden, which is a no-op)
-  if (chat) chat.forceScrollToBottom();
+  // Only force scroll when actually transitioning from no-session to active.
+  // On redundant calls (e.g., WebSocket reconnect while already viewing a session),
+  // skip the force scroll so the user's scroll position is preserved.
+  if (wasActive && chat) chat.forceScrollToBottom();
 }
 
 function sendMessage() {
