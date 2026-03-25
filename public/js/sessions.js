@@ -291,24 +291,30 @@ export class SessionUI {
       const s = this._dragState;
       if (!s) return;
 
+      s.item.classList.remove('dragging');
+
+      if (s.currentIndex !== s.index) {
+        // Calculate new order
+        const ids = s.allItems.map(el => el.dataset.sessionId);
+        const [moved] = ids.splice(s.index, 1);
+        ids.splice(s.currentIndex, 0, moved);
+        this.saveSessionOrder(ids);
+
+        // Reorder DOM nodes to match visual positions BEFORE clearing
+        // transforms — this prevents any visible snap-back
+        for (const id of ids) {
+          const el = list.querySelector(`[data-session-id="${id}"]`);
+          if (el) list.appendChild(el);
+        }
+      }
+
+      // Clear transforms after DOM is in final order — no visual jump
       s.allItems.forEach(el => {
         el.style.transform = '';
         el.style.transition = '';
         el.style.zIndex = '';
         el.style.position = '';
       });
-      s.item.classList.remove('dragging');
-
-      if (s.currentIndex !== s.index) {
-        const ids = s.allItems.map(el => el.dataset.sessionId);
-        const [moved] = ids.splice(s.index, 1);
-        ids.splice(s.currentIndex, 0, moved);
-        this.saveSessionOrder(ids);
-        // Re-render immediately from cached data — no server round-trip
-        if (this.pilotcodeSessions) {
-          this.renderList([...this.pilotcodeSessions]);
-        }
-      }
 
       this._dragState = null;
       setTimeout(() => { this.isDragging = false; }, 50);
