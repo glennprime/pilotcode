@@ -89,7 +89,7 @@ export function createApiRouter(manager: SessionManager): Router {
   router.get('/api/active-sessions', requireAuth, (_req: Request, res: Response) => {
     const managedPids = manager.listManagedPids();
     const active = discoverActiveTerminalSessions(managedPids);
-    res.json(active);
+    res.json({ platform: process.platform, sessions: active });
   });
 
   router.patch('/api/sessions/:id', requireAuth, (req: Request, res: Response) => {

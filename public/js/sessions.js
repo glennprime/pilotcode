@@ -576,8 +576,13 @@ export class SessionUI {
     try {
       const res = await fetch('/api/active-sessions');
       if (!res.ok) return;
-      const sessions = await res.json();
-      this.renderActiveSessions(sessions);
+      const data = await res.json();
+      // Update section header based on server platform
+      const label = this.externalSection.querySelector('.section-label');
+      if (label && data.platform) {
+        label.textContent = data.platform === 'darwin' ? 'Active on Mac' : 'Active on Linux';
+      }
+      this.renderActiveSessions(data.sessions || []);
     } catch { /* offline */ }
   }
 

@@ -275,7 +275,7 @@ export function discoverActiveTerminalSessions(managedPids: Set<number>): Active
       let cwd: string;
       try {
         const lsofOutput = execSync(
-          `/usr/sbin/lsof -a -d cwd -Fn -p ${pid}`,
+          `lsof -a -d cwd -Fn -p ${pid}`,
           { encoding: 'utf-8', timeout: 3000 }
         );
         const cwdLine = lsofOutput.split('\n').find(l => l.startsWith('n'));
