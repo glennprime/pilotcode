@@ -81,7 +81,7 @@ export class SessionUI {
       el.dataset.sessionId = s.id;
       el.innerHTML = `
         <div class="session-item-row">
-          <span class="drag-handle">&#x2807;</span>
+          <span class="drag-handle">&#x22EE;</span>
           <div class="session-item-name">
             ${s.busy ? '<span class="active-dot busy"></span>' : s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
           </div>
@@ -231,19 +231,7 @@ export class SessionUI {
   setupDragReorder() {
     const list = this.list;
 
-    // All pointer events on the list — pointer capture ensures iOS Safari
-    // delivers pointermove/pointerup even when finger moves outside the element.
-    list.addEventListener('pointerdown', (e) => {
-      const handle = e.target.closest('.drag-handle');
-      if (!handle) return;
-
-      const item = handle.closest('.session-item');
-      if (!item) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      list.setPointerCapture(e.pointerId);
-
+    const startDrag = (item, clientY) => {
       const allItems = [...list.querySelectorAll('.session-item')];
       const rects = allItems.map(el => el.getBoundingClientRect());
       const index = allItems.indexOf(item);
@@ -252,29 +240,27 @@ export class SessionUI {
         item,
         index,
         currentIndex: index,
-        startY: e.clientY,
+        startY: clientY,
         itemRect: rects[index],
         allItems,
         rects,
-        pointerId: e.pointerId,
       };
 
       item.classList.add('dragging');
       this.isDragging = true;
-    });
+    };
 
-    list.addEventListener('pointermove', (e) => {
+    const moveDrag = (clientY) => {
       const s = this._dragState;
       if (!s) return;
 
-      const dy = e.clientY - s.startY;
+      const dy = clientY - s.startY;
       s.item.style.transform = `translateY(${dy}px)`;
       s.item.style.zIndex = '100';
       s.item.style.position = 'relative';
 
       const dragCenter = s.itemRect.top + s.itemRect.height / 2 + dy;
 
-      // Find where the dragged item would land
       let newIndex = s.index;
       for (let i = 0; i < s.rects.length; i++) {
         if (i === s.index) continue;
@@ -283,7 +269,6 @@ export class SessionUI {
         if (s.index > i && dragCenter < center && i < newIndex) newIndex = i;
       }
 
-      // Shift displaced items with smooth animation
       for (let i = 0; i < s.allItems.length; i++) {
         if (i === s.index) continue;
         const shouldShift =
@@ -300,13 +285,12 @@ export class SessionUI {
       }
 
       s.currentIndex = newIndex;
-    });
+    };
 
     const endDrag = () => {
       const s = this._dragState;
       if (!s) return;
 
-      // Reset all transforms
       s.allItems.forEach(el => {
         el.style.transform = '';
         el.style.transition = '';
@@ -324,13 +308,48 @@ export class SessionUI {
       }
 
       this._dragState = null;
-      // Delay clearing so the click handler sees isDragging=true and skips
       setTimeout(() => { this.isDragging = false; }, 50);
     };
 
-    list.addEventListener('pointerup', endDrag);
-    list.addEventListener('pointercancel', endDrag);
-    list.addEventListener('lostpointercapture', endDrag);
+    // ── Touch events (iOS Safari / mobile) ──
+    list.addEventListener('touchstart', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+      const item = handle.closest('.session-item');
+      if (!item) return;
+      e.preventDefault();
+      e.stopPropagation();
+      startDrag(item, e.touches[0].clientY);
+    }, { passive: false });
+
+    list.addEventListener('touchmove', (e) => {
+      if (!this._dragState) return;
+      e.preventDefault(); // prevent scroll while dragging
+      moveDrag(e.touches[0].clientY);
+    }, { passive: false });
+
+    list.addEventListener('touchend', endDrag);
+    list.addEventListener('touchcancel', endDrag);
+
+    // ── Mouse events (desktop) ──
+    list.addEventListener('mousedown', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+      const item = handle.closest('.session-item');
+      if (!item) return;
+      e.preventDefault();
+      e.stopPropagation();
+      startDrag(item, e.clientY);
+
+      const onMouseMove = (e) => moveDrag(e.clientY);
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        endDrag();
+      };
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
   }
 
   saveSessionOrder(ids) {
