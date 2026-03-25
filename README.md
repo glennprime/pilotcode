@@ -613,3 +613,5 @@ For architecture details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ---
 
 Created by [Glenn Prime](https://github.com/glennprime)
+
+[jpatriotic](https://github.com/jpatriotic) — session resilience, drag-to-reorder, smart auto-scroll, interactive tool cards, file downloads, Linux support, and iOS polish
