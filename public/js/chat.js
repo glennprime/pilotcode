@@ -18,7 +18,7 @@ export class Chat {
     this.toolCards = new Map(); // tool_use id -> DOM element
     this.suppressReplay = false; // true during buffer replay after reconnect
     this.sessionCwd = ''; // working directory for resolving relative paths
-    this._scrollPositions = new Map(); // sessionId -> scrollTop
+    this._scrollKey = 'pilotcode_scroll_positions'; // persisted in sessionStorage
 
     // Callbacks for user message actions (wired by app.js)
     this.onResend = null; // (text) => void
@@ -42,6 +42,12 @@ export class Chat {
     this.scrollBtn = document.getElementById('scroll-bottom-btn');
     if (this.scrollBtn) {
       this.scrollBtn.onclick = () => this.forceScrollToBottom();
+      // Save scroll position on page unload so refresh preserves it
+      window.addEventListener('beforeunload', () => {
+        if (this.sessionId) {
+          this._saveScrollPos(this.sessionId, this.messagesEl.scrollTop);
+        }
+      });
       let scrollTicking = false;
       this.messagesEl.addEventListener('scroll', () => {
         if (!scrollTicking) {
@@ -832,7 +838,7 @@ export class Chat {
   async switchSession(newSessionId) {
     // Save scroll position of the session we're leaving
     if (this.sessionId) {
-      this._scrollPositions.set(this.sessionId, this.messagesEl.scrollTop);
+      this._saveScrollPos(this.sessionId, this.messagesEl.scrollTop);
     }
 
     // Clear UI state synchronously first — before any await —
@@ -866,13 +872,15 @@ export class Chat {
     if (this.thinkingEl) {
       this.messagesEl.appendChild(this.thinkingEl);
       this.forceScrollToBottom();
-    } else if (newSessionId && this._scrollPositions.has(newSessionId)) {
+    } else if (newSessionId) {
       // Restore previous scroll position for this session
-      const savedPos = this._scrollPositions.get(newSessionId);
-      requestAnimationFrame(() => {
-        this.messagesEl.scrollTop = savedPos;
-        this._updateScrollBtn();
-      });
+      const savedPos = this._getScrollPos(newSessionId);
+      if (savedPos != null) {
+        requestAnimationFrame(() => {
+          this.messagesEl.scrollTop = savedPos;
+          this._updateScrollBtn();
+        });
+      }
     }
   }
 
@@ -986,6 +994,21 @@ export class Chat {
     if (this.scrollBtn) {
       this.scrollBtn.classList.toggle('visible', !this.isNearBottom());
     }
+  }
+
+  _saveScrollPos(sessionId, pos) {
+    try {
+      const all = JSON.parse(sessionStorage.getItem(this._scrollKey) || '{}');
+      all[sessionId] = pos;
+      sessionStorage.setItem(this._scrollKey, JSON.stringify(all));
+    } catch { /* full storage */ }
+  }
+
+  _getScrollPos(sessionId) {
+    try {
+      const all = JSON.parse(sessionStorage.getItem(this._scrollKey) || '{}');
+      return all[sessionId] ?? null;
+    } catch { return null; }
   }
 }
 

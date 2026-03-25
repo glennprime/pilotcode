@@ -177,7 +177,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v75';
+  if (versionEl) versionEl.textContent = 'v76';
 }
 
 function setupInput() {
