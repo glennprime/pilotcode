@@ -550,7 +550,7 @@ function handleConnectExternalSession(
   setCurrent: (proc: ClaudeProcess, sid: string) => void,
   onProcSpawned?: (proc: ClaudeProcess) => void
 ): void {
-  const { sessionId, name } = msg;
+  const { sessionId, name, skipSave } = msg;
   if (!sessionId) {
     ws.send(JSON.stringify({ type: 'error', error: 'sessionId required' }));
     return;
@@ -574,11 +574,13 @@ function handleConnectExternalSession(
   if (proc && proc.isAlive) {
     const actualSid = proc.sessionId || sessionId;
     sessionLog('CONNECT_EXTERNAL_ALIVE', { requestedId: sessionId, actualSid });
-    // Adopt into PilotCode's session list
-    manager.saveSession({
-      id: actualSid, name: sessionName, cwd,
-      createdAt: new Date().toISOString(), lastUsed: new Date().toISOString(),
-    });
+    // Adopt into PilotCode's session list (unless skipSave — Mac session stays in Mac)
+    if (!skipSave) {
+      manager.saveSession({
+        id: actualSid, name: sessionName, cwd,
+        createdAt: new Date().toISOString(), lastUsed: new Date().toISOString(),
+      });
+    }
     setCurrent(proc, actualSid);
     if (onProcSpawned) onProcSpawned(proc);
     addClient(actualSid, ws);
@@ -596,11 +598,13 @@ function handleConnectExternalSession(
     return;
   }
 
-  // Adopt into PilotCode's session list before spawning
-  manager.saveSession({
-    id: sessionId, name: sessionName, cwd,
-    createdAt: new Date().toISOString(), lastUsed: new Date().toISOString(),
-  });
+  // Adopt into PilotCode's session list before spawning (unless skipSave)
+  if (!skipSave) {
+    manager.saveSession({
+      id: sessionId, name: sessionName, cwd,
+      createdAt: new Date().toISOString(), lastUsed: new Date().toISOString(),
+    });
+  }
 
   sessionLog('CONNECT_EXTERNAL_SPAWN', { sessionId: validId, name: sessionName, cwd });
   proc = manager.createProcess({ cwd, resume: validId });

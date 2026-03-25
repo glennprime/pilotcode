@@ -406,21 +406,16 @@ export class SessionUI {
 
   renderActiveSessions(sessions) {
     this.externalList.innerHTML = '';
+    this.externalCount.textContent = sessions.length;
 
-    // Filter out sessions that already have a PilotCode session with the same cwd
-    const pcCwds = new Set((this.pilotcodeSessions || []).map(pc => pc.cwd));
-    const filtered = sessions.filter(s => !pcCwds.has(s.cwd));
-
-    this.externalCount.textContent = filtered.length;
-
-    if (filtered.length === 0) {
+    if (sessions.length === 0) {
       this.externalSection.style.display = 'none';
       return;
     }
 
     this.externalSection.style.display = '';
 
-    for (const s of filtered) {
+    for (const s of sessions) {
       const dirName = s.cwd.split('/').filter(Boolean).pop() || s.cwd;
       const el = document.createElement('div');
       el.className = 'ext-active-item';
@@ -448,14 +443,14 @@ export class SessionUI {
     document.getElementById('session-name').textContent = `${name}`;
   }
 
-  /** Transition from watch mode to a connected session. */
+  /** Transition from watch mode to a connected session (stays in Mac section). */
   connectWatchedSession() {
     const meta = this.watchMeta;
     if (!meta) return;
     this.watchMeta = null;
     this.currentSessionId = '__creating__';
     this.wsClient.setActiveSession(null);
-    this.wsClient.send({ type: 'connect_external_session', sessionId: meta.sessionId, cwd: meta.cwd, name: meta.name });
+    this.wsClient.send({ type: 'connect_external_session', sessionId: meta.sessionId, cwd: meta.cwd, name: meta.name, skipSave: true });
     this.onSessionChange(meta.name, '__creating__', meta.cwd);
   }
 

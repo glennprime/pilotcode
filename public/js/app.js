@@ -177,7 +177,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v68';
+  if (versionEl) versionEl.textContent = 'v69';
 }
 
 function setupInput() {
@@ -237,7 +237,7 @@ function hideNoSessionPrompt() {
 }
 
 function sendMessage() {
-  // In watch mode, typing connects to the session
+  // In watch mode, connect to the session (stays in Mac section)
   if (watchMode) {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
@@ -631,7 +631,7 @@ function updateNtfyButton(btn, enabled) {
 function enterWatchMode(sessionId) {
   watchMode = true;
   hideNoSessionPrompt();
-  // Show banner above input — input stays visible for connect-on-send
+  // Show banner above input — input stays visible for interaction
   let banner = document.getElementById('watch-banner');
   if (!banner) {
     banner = document.createElement('div');
@@ -639,7 +639,7 @@ function enterWatchMode(sessionId) {
     const inputArea = document.getElementById('input-area');
     inputArea.parentNode.insertBefore(banner, inputArea);
   }
-  banner.innerHTML = '<span class="watch-dot"></span> Watching — type to connect';
+  banner.innerHTML = '<span class="watch-dot"></span> Live session';
   banner.style.display = '';
 }
 
