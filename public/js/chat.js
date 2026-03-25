@@ -885,6 +885,11 @@ export class Chat {
       this.history = await res.json();
       if (!Array.isArray(this.history)) { this.history = []; return; }
 
+      // Clear existing message elements to prevent duplication.
+      // loadHistory can be called multiple times for the same session
+      // (e.g., on boot + session_not_running reconnect), so it must be idempotent.
+      this.messagesEl.querySelectorAll('.message, .file-links, .tool-card, .turn-stats').forEach(el => el.remove());
+
       for (const entry of this.history) {
         switch (entry.role) {
           case 'user': {
