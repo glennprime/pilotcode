@@ -99,10 +99,35 @@ function showApp() {
     input.selectionStart = input.selectionEnd = text.length;
   };
 
+  // Draft message persistence — save/restore partial typed text per session
+  const saveDraft = () => {
+    const sid = chat.sessionId;
+    if (!sid) return;
+    const text = document.getElementById('message-input').value;
+    const drafts = JSON.parse(sessionStorage.getItem('pilotcode_drafts') || '{}');
+    if (text.trim()) {
+      drafts[sid] = text;
+    } else {
+      delete drafts[sid];
+    }
+    sessionStorage.setItem('pilotcode_drafts', JSON.stringify(drafts));
+  };
+  const loadDraft = (sid) => {
+    const input = document.getElementById('message-input');
+    const drafts = JSON.parse(sessionStorage.getItem('pilotcode_drafts') || '{}');
+    const text = (sid && drafts[sid]) || '';
+    input.value = text;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    document.getElementById('send-btn').disabled = !text.trim();
+  };
+
   // Sessions
   sessionUI = new SessionUI(wsClient, (name, sessionId, cwd) => {
     // Exit watch mode when switching to a real session
     if (watchMode) exitWatchMode();
+    // Save draft for outgoing session before switching
+    saveDraft();
     sessionGreeted = !!sessionId;
     if (cwd) chat.sessionCwd = cwd;
     pendingMessage = null;
@@ -118,6 +143,8 @@ function showApp() {
       chat.switchSession(sessionId || null);
       if (sessionId) hideNoSessionPrompt();
     }
+    // Restore draft for incoming session
+    loadDraft(sessionId);
   });
 
   // Images
@@ -135,6 +162,7 @@ function showApp() {
     chat.loadHistory(lastSessionId);
     wsClient.setActiveSession(lastSessionId);
     sessionUI.setCurrentSession(lastSessionId);
+    loadDraft(lastSessionId);
   }
 
   // Connect WebSocket (will auto-rejoin session if activeSessionId is set)
@@ -177,7 +205,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v77';
+  if (versionEl) versionEl.textContent = 'v78';
 }
 
 function setupInput() {
@@ -380,20 +408,23 @@ function handleMessage(msg) {
     // Buffer replay re-delivers old messages; assistant messages are deduped by ID
     // so duplicates are skipped. Replayed result messages clear the spinner, but
     // session_busy (sent AFTER replay) re-asserts it for still-busy sessions.
-    case 'session_rejoined':
+    case 'session_rejoined': {
       // Suppress ding during buffer replay so old results don't all ding
       dingSuppressed = true;
       setTimeout(() => { dingSuppressed = false; }, 2000);
       // Sync session ID — server may have resolved to a different ID via alias chain
+      const rejoinId = msg.sessionId || wsClient.activeSessionId;
       if (msg.sessionId && msg.sessionId !== wsClient.activeSessionId) {
         wsClient.setActiveSession(msg.sessionId);
         chat.sessionId = msg.sessionId;
         sessionUI.currentSessionId = msg.sessionId;
         localStorage.setItem('pilotcode_session', msg.sessionId);
       }
-      // History was already loaded on page init — mark all existing content
-      // as rendered so buffer replay doesn't duplicate it. Buffer replay
-      // messages that match existing content will be silently skipped.
+      // Reload history from disk — picks up messages that arrived while
+      // the user was away (phone locked, tab backgrounded, etc.).
+      if (rejoinId) chat.loadHistory(rejoinId);
+      // Suppress buffer replay rendering — loadHistory already has everything
+      // from persistent storage. Buffer replay would just duplicate.
       chat.suppressReplay = true;
       setTimeout(() => { chat.suppressReplay = false; }, 3000);
       if (msg.busy) {
@@ -401,6 +432,7 @@ function handleMessage(msg) {
       }
       hideNoSessionPrompt();
       break;
+    }
 
     // Session is still busy — sent AFTER buffer replay to re-show the spinner
     // (replayed result messages may have cleared it during replay)
