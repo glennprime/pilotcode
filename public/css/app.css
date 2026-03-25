@@ -109,6 +109,7 @@ html, body {
   height: 100%;
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
+  position: relative;
 }
 
 #app-view.active { display: flex; }
@@ -928,6 +929,38 @@ html, body {
 }
 
 
+/* ── Scroll-to-Bottom Button ── */
+#scroll-bottom-btn {
+  position: absolute;
+  bottom: 70px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  z-index: 10;
+}
+#scroll-bottom-btn.visible {
+  opacity: 0.85;
+  transform: scale(1);
+  pointer-events: auto;
+}
+#scroll-bottom-btn:active {
+  opacity: 1;
+  transform: scale(0.95);
+}
+
 /* ── Watch Mode ── */
 #watch-banner {
   display: flex;
@@ -1093,6 +1126,7 @@ html, body {
 #drawer-content {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 #session-list {
@@ -1193,6 +1227,32 @@ html, body {
 }
 
 .session-item:active, .session-item.active { background: var(--bg-hover); }
+
+.session-item.dragging {
+  opacity: 0.85;
+  background: var(--bg-elevated);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-height: 36px;
+  padding: 0 4px;
+  cursor: grab;
+  touch-action: none;
+  color: var(--text-muted);
+  opacity: 0.55;
+  font-size: 22px;
+  letter-spacing: 2px;
+  user-select: none;
+  -webkit-user-select: none;
+  flex-shrink: 0;
+}
+.drag-handle:active { cursor: grabbing; opacity: 1; }
 
 .session-item-row {
   display: flex;

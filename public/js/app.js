@@ -99,10 +99,35 @@ function showApp() {
     input.selectionStart = input.selectionEnd = text.length;
   };
 
+  // Draft message persistence — save/restore partial typed text per session
+  const saveDraft = () => {
+    const sid = chat.sessionId;
+    if (!sid) return;
+    const text = document.getElementById('message-input').value;
+    const drafts = JSON.parse(sessionStorage.getItem('pilotcode_drafts') || '{}');
+    if (text.trim()) {
+      drafts[sid] = text;
+    } else {
+      delete drafts[sid];
+    }
+    sessionStorage.setItem('pilotcode_drafts', JSON.stringify(drafts));
+  };
+  const loadDraft = (sid) => {
+    const input = document.getElementById('message-input');
+    const drafts = JSON.parse(sessionStorage.getItem('pilotcode_drafts') || '{}');
+    const text = (sid && drafts[sid]) || '';
+    input.value = text;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    document.getElementById('send-btn').disabled = !text.trim();
+  };
+
   // Sessions
   sessionUI = new SessionUI(wsClient, (name, sessionId, cwd) => {
     // Exit watch mode when switching to a real session
     if (watchMode) exitWatchMode();
+    // Save draft for outgoing session before switching
+    saveDraft();
     sessionGreeted = !!sessionId;
     if (cwd) chat.sessionCwd = cwd;
     pendingMessage = null;
@@ -118,6 +143,8 @@ function showApp() {
       chat.switchSession(sessionId || null);
       if (sessionId) hideNoSessionPrompt();
     }
+    // Restore draft for incoming session
+    loadDraft(sessionId);
   });
 
   // Images
@@ -135,6 +162,7 @@ function showApp() {
     chat.loadHistory(lastSessionId);
     wsClient.setActiveSession(lastSessionId);
     sessionUI.setCurrentSession(lastSessionId);
+    loadDraft(lastSessionId);
   }
 
   // Connect WebSocket (will auto-rejoin session if activeSessionId is set)
@@ -177,7 +205,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v69';
+  if (versionEl) versionEl.textContent = 'v81';
 }
 
 function setupInput() {
@@ -227,13 +255,16 @@ function showNoSessionPrompt() {
 }
 
 function hideNoSessionPrompt() {
-  document.getElementById('no-session-prompt').classList.remove('active');
+  const prompt = document.getElementById('no-session-prompt');
+  const wasActive = prompt.classList.contains('active');
+  prompt.classList.remove('active');
   document.getElementById('messages').style.display = '';
   document.getElementById('input-area').style.display = '';
   document.getElementById('image-preview').style.display = '';
-  // Scroll to bottom after messages become visible (loadHistory may have
-  // called scrollToBottom while the div was hidden, which is a no-op)
-  if (chat) chat.forceScrollToBottom();
+  // Only force scroll when actually transitioning from no-session to active.
+  // On redundant calls (e.g., WebSocket reconnect while already viewing a session),
+  // skip the force scroll so the user's scroll position is preserved.
+  if (wasActive && chat) chat.forceScrollToBottom();
 }
 
 function sendMessage() {
@@ -377,27 +408,31 @@ function handleMessage(msg) {
     // Buffer replay re-delivers old messages; assistant messages are deduped by ID
     // so duplicates are skipped. Replayed result messages clear the spinner, but
     // session_busy (sent AFTER replay) re-asserts it for still-busy sessions.
-    case 'session_rejoined':
+    case 'session_rejoined': {
       // Suppress ding during buffer replay so old results don't all ding
       dingSuppressed = true;
       setTimeout(() => { dingSuppressed = false; }, 2000);
       // Sync session ID — server may have resolved to a different ID via alias chain
+      const rejoinId = msg.sessionId || wsClient.activeSessionId;
       if (msg.sessionId && msg.sessionId !== wsClient.activeSessionId) {
         wsClient.setActiveSession(msg.sessionId);
         chat.sessionId = msg.sessionId;
         sessionUI.currentSessionId = msg.sessionId;
         localStorage.setItem('pilotcode_session', msg.sessionId);
       }
-      // History was already loaded on page init — mark all existing content
-      // as rendered so buffer replay doesn't duplicate it. Buffer replay
-      // messages that match existing content will be silently skipped.
+      // Reload history from disk — picks up messages that arrived while
+      // the user was away (phone locked, tab backgrounded, etc.).
+      // Chain showThinking AFTER loadHistory resolves so the thinking
+      // element isn't cleared by the DOM rebuild inside loadHistory.
       chat.suppressReplay = true;
       setTimeout(() => { chat.suppressReplay = false; }, 3000);
-      if (msg.busy) {
-        chat.showThinking('Thinking...');
-      }
+      const loaded = rejoinId ? chat.loadHistory(rejoinId) : Promise.resolve();
+      loaded.then(() => {
+        if (msg.busy) chat.showThinking('Thinking...');
+      });
       hideNoSessionPrompt();
       break;
+    }
 
     // Session is still busy — sent AFTER buffer replay to re-show the spinner
     // (replayed result messages may have cleared it during replay)
@@ -662,9 +697,26 @@ function renderWatchMessage(m) {
   }
 }
 
-// Register service worker
+// Register service worker with auto-update for iOS Safari.
+// iOS checks for SW updates very lazily, especially in PWA mode.
+// We force an update check every time the user returns to the app,
+// and auto-reload when a new SW takes control.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    // Force update check when user returns (critical for iOS Safari PWA)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update();
+    });
+  }).catch(() => {});
+
+  // Auto-reload when a new service worker activates
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!swRefreshing) {
+      swRefreshing = true;
+      location.reload();
+    }
+  });
 }
 
 // Dev test helpers — call from browser console

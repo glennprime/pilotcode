@@ -16,11 +16,17 @@ export class SessionUI {
     document.getElementById('modal-create').onclick = () => this.createSession();
     this.selectedCwd = null;
     this.currentBrowsePath = null;
+    this.isDragging = false;
     this.setupCwdPicker();
     this.setupExternalSection();
+    this.setupDragReorder();
   }
 
   openDrawer() {
+    // Update active highlight on stale DOM immediately (before async fetch)
+    this.list.querySelectorAll('.session-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.sessionId === this.currentSessionId);
+    });
     this.drawer.classList.add('open');
     this.overlay.classList.add('active');
     this.refreshList();
@@ -39,6 +45,7 @@ export class SessionUI {
   }
 
   async refreshList() {
+    if (this.isDragging) return; // don't re-render during drag
     try {
       const res = await fetch('/api/sessions');
       if (!res.ok) return;
@@ -49,13 +56,28 @@ export class SessionUI {
   }
 
   renderList(sessions) {
+    if (this.isDragging) return;
     this.list.innerHTML = '';
     if (sessions.length === 0) {
       this.list.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px;">No sessions yet. Send a message or tap "+ New".</div>';
       return;
     }
 
-    sessions.sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed));
+    // Apply custom order if saved, otherwise sort by last used
+    const customOrder = this.getSessionOrder();
+    if (customOrder) {
+      const orderMap = new Map(customOrder.map((id, i) => [id, i]));
+      sessions.sort((a, b) => {
+        const ai = orderMap.has(a.id) ? orderMap.get(a.id) : -1;
+        const bi = orderMap.has(b.id) ? orderMap.get(b.id) : -1;
+        if (ai === -1 && bi === -1) return new Date(b.lastUsed) - new Date(a.lastUsed);
+        if (ai === -1) return -1; // new sessions at top
+        if (bi === -1) return 1;
+        return ai - bi;
+      });
+    } else {
+      sessions.sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed));
+    }
 
     for (const s of sessions) {
       const el = document.createElement('div');
@@ -63,6 +85,7 @@ export class SessionUI {
       el.dataset.sessionId = s.id;
       el.innerHTML = `
         <div class="session-item-row">
+          <span class="drag-handle">&#x22EE;</span>
           <div class="session-item-name">
             ${s.busy ? '<span class="active-dot busy"></span>' : s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
           </div>
@@ -81,6 +104,7 @@ export class SessionUI {
 
       // Tap anywhere else to switch session
       el.onclick = () => {
+        if (this.isDragging) return; // don't switch during drag
         this.resumeSession(s.id, s.name, s.cwd);
         this.closeDrawer();
       };
@@ -204,6 +228,159 @@ export class SessionUI {
     };
 
     el.appendChild(sheet);
+  }
+
+  // ── Drag-to-Reorder ──
+
+  setupDragReorder() {
+    const list = this.list;
+
+    const startDrag = (item, clientY) => {
+      const allItems = [...list.querySelectorAll('.session-item')];
+      const rects = allItems.map(el => el.getBoundingClientRect());
+      const index = allItems.indexOf(item);
+
+      this._dragState = {
+        item,
+        index,
+        currentIndex: index,
+        startY: clientY,
+        itemRect: rects[index],
+        allItems,
+        rects,
+      };
+
+      item.classList.add('dragging');
+      this.isDragging = true;
+    };
+
+    const moveDrag = (clientY) => {
+      const s = this._dragState;
+      if (!s) return;
+
+      const dy = clientY - s.startY;
+      s.item.style.transform = `translateY(${dy}px)`;
+      s.item.style.zIndex = '100';
+      s.item.style.position = 'relative';
+
+      const dragCenter = s.itemRect.top + s.itemRect.height / 2 + dy;
+
+      let newIndex = s.index;
+      for (let i = 0; i < s.rects.length; i++) {
+        if (i === s.index) continue;
+        const center = s.rects[i].top + s.rects[i].height / 2;
+        if (s.index < i && dragCenter > center) newIndex = i;
+        if (s.index > i && dragCenter < center && i < newIndex) newIndex = i;
+      }
+
+      for (let i = 0; i < s.allItems.length; i++) {
+        if (i === s.index) continue;
+        const shouldShift =
+          (s.index < newIndex && i > s.index && i <= newIndex) ||
+          (s.index > newIndex && i < s.index && i >= newIndex);
+        if (shouldShift) {
+          const dir = s.index < newIndex ? -1 : 1;
+          s.allItems[i].style.transform = `translateY(${dir * s.itemRect.height}px)`;
+          s.allItems[i].style.transition = 'transform 0.15s ease';
+        } else {
+          s.allItems[i].style.transform = '';
+          s.allItems[i].style.transition = 'transform 0.15s ease';
+        }
+      }
+
+      s.currentIndex = newIndex;
+    };
+
+    const endDrag = () => {
+      const s = this._dragState;
+      if (!s) return;
+
+      s.item.classList.remove('dragging');
+
+      if (s.currentIndex !== s.index) {
+        // Calculate new order
+        const ids = s.allItems.map(el => el.dataset.sessionId);
+        const [moved] = ids.splice(s.index, 1);
+        ids.splice(s.currentIndex, 0, moved);
+        this.saveSessionOrder(ids);
+
+        // Reorder DOM nodes to match visual positions BEFORE clearing
+        // transforms — this prevents any visible snap-back
+        for (const id of ids) {
+          const el = list.querySelector(`[data-session-id="${id}"]`);
+          if (el) list.appendChild(el);
+        }
+      }
+
+      // Clear transforms after DOM is in final order — no visual jump
+      s.allItems.forEach(el => {
+        el.style.transform = '';
+        el.style.transition = '';
+        el.style.zIndex = '';
+        el.style.position = '';
+      });
+
+      this._dragState = null;
+      setTimeout(() => { this.isDragging = false; }, 50);
+    };
+
+    // ── Touch events (iOS Safari / mobile) ──
+    // Only attach non-passive touchmove/touchend DURING a drag so that
+    // normal list scrolling isn't blocked by iOS Safari's scroll optimization.
+    const onTouchMove = (e) => {
+      e.preventDefault(); // prevent scroll while dragging
+      moveDrag(e.touches[0].clientY);
+    };
+    const onTouchEnd = () => {
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener('touchcancel', onTouchEnd);
+      endDrag();
+    };
+
+    list.addEventListener('touchstart', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+      const item = handle.closest('.session-item');
+      if (!item) return;
+      e.preventDefault();
+      e.stopPropagation();
+      startDrag(item, e.touches[0].clientY);
+      document.addEventListener('touchmove', onTouchMove, { passive: false });
+      document.addEventListener('touchend', onTouchEnd);
+      document.addEventListener('touchcancel', onTouchEnd);
+    }, { passive: false });
+
+    // ── Mouse events (desktop) ──
+    list.addEventListener('mousedown', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+      const item = handle.closest('.session-item');
+      if (!item) return;
+      e.preventDefault();
+      e.stopPropagation();
+      startDrag(item, e.clientY);
+
+      const onMouseMove = (e) => moveDrag(e.clientY);
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        endDrag();
+      };
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  }
+
+  saveSessionOrder(ids) {
+    localStorage.setItem('pilotcode_session_order', JSON.stringify(ids));
+  }
+
+  getSessionOrder() {
+    try {
+      const order = localStorage.getItem('pilotcode_session_order');
+      return order ? JSON.parse(order) : null;
+    } catch { return null; }
   }
 
   showNewSessionModal() {
@@ -399,8 +576,13 @@ export class SessionUI {
     try {
       const res = await fetch('/api/active-sessions');
       if (!res.ok) return;
-      const sessions = await res.json();
-      this.renderActiveSessions(sessions);
+      const data = await res.json();
+      // Update section header based on server platform
+      const label = this.externalSection.querySelector('.section-label');
+      if (label && data.platform) {
+        label.textContent = data.platform === 'darwin' ? 'Active on Mac' : 'Active on Linux';
+      }
+      this.renderActiveSessions(data.sessions || []);
     } catch { /* offline */ }
   }
 

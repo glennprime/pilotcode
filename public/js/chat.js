@@ -18,6 +18,7 @@ export class Chat {
     this.toolCards = new Map(); // tool_use id -> DOM element
     this.suppressReplay = false; // true during buffer replay after reconnect
     this.sessionCwd = ''; // working directory for resolving relative paths
+    this._scrollKey = 'pilotcode_scroll_positions'; // persisted in sessionStorage
 
     // Callbacks for user message actions (wired by app.js)
     this.onResend = null; // (text) => void
@@ -36,6 +37,28 @@ export class Chat {
         this.onEdit(text);
       }
     });
+
+    // Scroll-to-bottom button
+    this.scrollBtn = document.getElementById('scroll-bottom-btn');
+    if (this.scrollBtn) {
+      this.scrollBtn.onclick = () => this.forceScrollToBottom();
+      // Save scroll position on page unload so refresh preserves it
+      window.addEventListener('beforeunload', () => {
+        if (this.sessionId) {
+          this._saveScrollPos(this.sessionId, this.messagesEl.scrollTop);
+        }
+      });
+      let scrollTicking = false;
+      this.messagesEl.addEventListener('scroll', () => {
+        if (!scrollTicking) {
+          requestAnimationFrame(() => {
+            this._updateScrollBtn();
+            scrollTicking = false;
+          });
+          scrollTicking = true;
+        }
+      }, { passive: true });
+    }
   }
 
   setSession(sessionId) {
@@ -813,6 +836,11 @@ export class Chat {
   }
 
   async switchSession(newSessionId) {
+    // Save scroll position of the session we're leaving
+    if (this.sessionId) {
+      this._saveScrollPos(this.sessionId, this.messagesEl.scrollTop);
+    }
+
     // Clear UI state synchronously first — before any await —
     // so server messages (session_rejoined, session_busy) that arrive
     // during async operations won't get overridden.
@@ -844,6 +872,15 @@ export class Chat {
     if (this.thinkingEl) {
       this.messagesEl.appendChild(this.thinkingEl);
       this.forceScrollToBottom();
+    } else if (newSessionId) {
+      // Restore previous scroll position for this session
+      const savedPos = this._getScrollPos(newSessionId);
+      if (savedPos != null) {
+        requestAnimationFrame(() => {
+          this.messagesEl.scrollTop = savedPos;
+          this._updateScrollBtn();
+        });
+      }
     }
   }
 
@@ -885,6 +922,11 @@ export class Chat {
       this.history = await res.json();
       if (!Array.isArray(this.history)) { this.history = []; return; }
 
+      // Clear existing message elements to prevent duplication.
+      // loadHistory can be called multiple times for the same session
+      // (e.g., on boot + session_not_running reconnect), so it must be idempotent.
+      this.messagesEl.querySelectorAll('.message, .file-links, .tool-card, .turn-stats').forEach(el => el.remove());
+
       for (const entry of this.history) {
         switch (entry.role) {
           case 'user': {
@@ -900,7 +942,11 @@ export class Chat {
             break;
         }
       }
-      this.forceScrollToBottom();
+      // Use smart scroll — if the user scrolled up to read history,
+      // don't snap them to the bottom on reconnect-triggered reloads.
+      // On initial load (messages div was empty), isNearBottom() is true
+      // so this still scrolls to show the latest messages.
+      this.scrollToBottom();
     } catch { /* offline */ }
   }
 
@@ -928,15 +974,41 @@ export class Chat {
 
   /** Scroll to bottom only if the user hasn't scrolled up to read history. */
   scrollToBottom() {
-    if (!this.isNearBottom()) return;
-    this.forceScrollToBottom();
+    if (this.isNearBottom()) {
+      this.forceScrollToBottom();
+    } else {
+      this._updateScrollBtn();
+    }
   }
 
   /** Unconditionally scroll to bottom (used after session switch, history load, etc.). */
   forceScrollToBottom() {
     requestAnimationFrame(() => {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      // scroll event will fire and hide the button
     });
+  }
+
+  /** Show/hide the scroll-to-bottom button based on scroll position. */
+  _updateScrollBtn() {
+    if (this.scrollBtn) {
+      this.scrollBtn.classList.toggle('visible', !this.isNearBottom());
+    }
+  }
+
+  _saveScrollPos(sessionId, pos) {
+    try {
+      const all = JSON.parse(sessionStorage.getItem(this._scrollKey) || '{}');
+      all[sessionId] = pos;
+      sessionStorage.setItem(this._scrollKey, JSON.stringify(all));
+    } catch { /* full storage */ }
+  }
+
+  _getScrollPos(sessionId) {
+    try {
+      const all = JSON.parse(sessionStorage.getItem(this._scrollKey) || '{}');
+      return all[sessionId] ?? null;
+    } catch { return null; }
   }
 }
 
