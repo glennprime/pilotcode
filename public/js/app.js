@@ -205,7 +205,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v78';
+  if (versionEl) versionEl.textContent = 'v79';
 }
 
 function setupInput() {
@@ -422,14 +422,14 @@ function handleMessage(msg) {
       }
       // Reload history from disk — picks up messages that arrived while
       // the user was away (phone locked, tab backgrounded, etc.).
-      if (rejoinId) chat.loadHistory(rejoinId);
-      // Suppress buffer replay rendering — loadHistory already has everything
-      // from persistent storage. Buffer replay would just duplicate.
+      // Chain showThinking AFTER loadHistory resolves so the thinking
+      // element isn't cleared by the DOM rebuild inside loadHistory.
       chat.suppressReplay = true;
       setTimeout(() => { chat.suppressReplay = false; }, 3000);
-      if (msg.busy) {
-        chat.showThinking('Thinking...');
-      }
+      const loaded = rejoinId ? chat.loadHistory(rejoinId) : Promise.resolve();
+      loaded.then(() => {
+        if (msg.busy) chat.showThinking('Thinking...');
+      });
       hideNoSessionPrompt();
       break;
     }
