@@ -1469,7 +1469,7 @@ html, body {
 .cwd-breadcrumb .crumb.active:hover { background: none; }
 .cwd-breadcrumb .crumb-sep { color: var(--text-muted); }
 
-#session-cwd-select {
+.cwd-dir-list {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -1478,19 +1478,28 @@ html, body {
   padding: 4px 0;
   font-size: 14px;
   color: var(--text);
-  outline: none;
   margin-bottom: 12px;
-  font-family: var(--font-sans);
+  max-height: 180px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-#session-cwd-select option {
-  padding: 6px 12px;
+.cwd-dir-item {
+  padding: 8px 12px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-#session-cwd-select option:checked {
-  background: var(--accent-dim);
-  color: #fff;
+.cwd-dir-item:active { background: var(--accent-dim); }
+
+.cwd-dir-icon { opacity: 0.5; font-size: 14px; }
+
+.cwd-dir-empty {
+  padding: 8px 12px;
+  color: var(--text-dim);
+  font-style: italic;
 }
 
 .modal-actions {

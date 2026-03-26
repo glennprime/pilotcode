@@ -420,7 +420,7 @@ export class SessionUI {
   }
 
   async loadDirectories(path) {
-    const select = document.getElementById('session-cwd-select');
+    const dirList = document.getElementById('cwd-dir-list');
     const breadcrumb = document.getElementById('cwd-breadcrumb');
     const url = path ? `/api/directories?path=${encodeURIComponent(path)}` : '/api/directories';
     try {
@@ -450,37 +450,27 @@ export class SessionUI {
         el.onclick = () => this.loadDirectories(el.dataset.path);
       });
 
-      // Render directory list
-      select.innerHTML = '';
+      // Render directory list as tappable items
+      dirList.innerHTML = '';
       if (data.directories.length === 0) {
-        const opt = document.createElement('option');
-        opt.textContent = '(no subdirectories)';
-        opt.disabled = true;
-        select.appendChild(opt);
+        const empty = document.createElement('div');
+        empty.className = 'cwd-dir-empty';
+        empty.textContent = '(no subdirectories)';
+        dirList.appendChild(empty);
       } else {
         for (const dir of data.directories) {
-          const opt = document.createElement('option');
-          opt.value = dir.path;
-          opt.textContent = dir.name;
-          select.appendChild(opt);
+          const item = document.createElement('div');
+          item.className = 'cwd-dir-item';
+          item.dataset.path = dir.path;
+          item.innerHTML = `<span class="cwd-dir-icon">\u{1F4C1}</span><span>${escapeHtml(dir.name)}</span>`;
+          item.onclick = () => this.loadDirectories(dir.path);
+          dirList.appendChild(item);
         }
       }
     } catch { /* offline */ }
   }
 
   setupCwdPicker() {
-    const select = document.getElementById('session-cwd-select');
-    select.addEventListener('dblclick', () => {
-      if (select.value) {
-        this.loadDirectories(select.value);
-      }
-    });
-    select.addEventListener('change', () => {
-      if (select.value) {
-        this.selectedCwd = select.value;
-      }
-    });
-
     // Path input: type a path and press Enter or click Go
     const pathInput = document.getElementById('cwd-path-input');
     const goBtn = document.getElementById('cwd-path-go');
