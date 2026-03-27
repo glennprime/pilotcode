@@ -209,7 +209,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v88';
+  if (versionEl) versionEl.textContent = 'v89';
 }
 
 function setupInput() {
@@ -703,15 +703,13 @@ async function initNtfyToggle() {
 
     if (data.topic) {
       // Disable — remember topic so user can re-enable easily
-      if (confirm('Disable Apple Watch notifications?')) {
-        localStorage.setItem('pilotcode_ntfy_topic', data.topic);
-        await fetch('/api/ntfy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: null }),
-        });
-        updateNtfyButton(btn, false);
-      }
+      localStorage.setItem('pilotcode_ntfy_topic', data.topic);
+      await fetch('/api/ntfy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: null }),
+      });
+      updateNtfyButton(btn, false);
     } else {
       // Enable — pre-fill with last-used topic so user can just press Enter
       const lastTopic = localStorage.getItem('pilotcode_ntfy_topic') || '';
