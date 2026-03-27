@@ -159,6 +159,9 @@ function showApp() {
     sessionUI.currentSessionId = lastSessionId;
     chat.setSession(lastSessionId);
     chat.sessionCwd = localStorage.getItem('pilotcode_session_cwd') || '';
+    // Show cached name immediately so header isn't blank during async fetch
+    const cachedName = localStorage.getItem('pilotcode_session_name');
+    if (cachedName) document.getElementById('session-name').textContent = cachedName;
     chat.loadHistory(lastSessionId);
     wsClient.setActiveSession(lastSessionId);
     sessionUI.setCurrentSession(lastSessionId);
@@ -206,7 +209,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v86';
+  if (versionEl) versionEl.textContent = 'v87';
 }
 
 function setupInput() {

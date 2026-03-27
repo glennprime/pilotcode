@@ -629,15 +629,19 @@ export class SessionUI {
   setCurrentSession(sessionId) {
     this.currentSessionId = sessionId;
     localStorage.setItem('pilotcode_session', sessionId);
-    // Fetch the session name from the server
+    // Fetch the session name from the server.
+    // Guard: only update header if session hasn't changed during the async fetch.
     fetch('/api/sessions')
       .then((r) => r.json())
       .then((sessions) => {
+        if (this.currentSessionId !== sessionId) return;
         const s = sessions.find((s) => s.id === sessionId);
         const name = s?.name || sessionId.slice(0, 8);
         document.getElementById('session-name').textContent = name;
+        localStorage.setItem('pilotcode_session_name', name);
       })
       .catch(() => {
+        if (this.currentSessionId !== sessionId) return;
         document.getElementById('session-name').textContent = sessionId.slice(0, 8);
       });
   }
