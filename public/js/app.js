@@ -209,7 +209,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v87';
+  if (versionEl) versionEl.textContent = 'v88';
 }
 
 function setupInput() {
@@ -685,12 +685,13 @@ async function initNtfyToggle() {
   const btn = document.getElementById('push-toggle');
   if (!btn) return;
 
-  // Check current state from server
+  // Check current state from server and seed localStorage
   try {
     const res = await fetch('/api/ntfy');
     const data = await res.json();
     btn.style.display = 'inline-block';
     updateNtfyButton(btn, !!data.topic);
+    if (data.topic) localStorage.setItem('pilotcode_ntfy_topic', data.topic);
   } catch {
     btn.style.display = 'inline-block';
     updateNtfyButton(btn, false);
@@ -701,8 +702,9 @@ async function initNtfyToggle() {
     const data = await res.json();
 
     if (data.topic) {
-      // Disable — confirm first
+      // Disable — remember topic so user can re-enable easily
       if (confirm('Disable Apple Watch notifications?')) {
+        localStorage.setItem('pilotcode_ntfy_topic', data.topic);
         await fetch('/api/ntfy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -711,15 +713,20 @@ async function initNtfyToggle() {
         updateNtfyButton(btn, false);
       }
     } else {
-      // Enable — ask for topic or generate one
+      // Enable — pre-fill with last-used topic so user can just press Enter
+      const lastTopic = localStorage.getItem('pilotcode_ntfy_topic') || '';
       const topic = prompt(
-        'Enter your ntfy topic (from the ntfy app on your phone).\n\n' +
-        'If you don\'t have one yet:\n' +
-        '1. Install "ntfy" from the App Store\n' +
-        '2. Tap + to subscribe to a topic\n' +
-        '3. Pick any name and paste it here'
+        lastTopic
+          ? 'Re-enable with your previous topic? Edit or press OK.'
+          : 'Enter your ntfy topic (from the ntfy app on your phone).\n\n' +
+            'If you don\'t have one yet:\n' +
+            '1. Install "ntfy" from the App Store\n' +
+            '2. Tap + to subscribe to a topic\n' +
+            '3. Pick any name and paste it here',
+        lastTopic
       );
       if (topic && topic.trim()) {
+        localStorage.setItem('pilotcode_ntfy_topic', topic.trim());
         await fetch('/api/ntfy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
