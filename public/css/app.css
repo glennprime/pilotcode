@@ -922,10 +922,22 @@ html, body {
   display: flex;
 }
 
-#image-btn {
+#image-btn, #mic-btn {
   background: var(--bg-elevated);
   color: var(--text-dim);
   border: 1px solid var(--border);
+}
+
+#mic-btn.mic-active {
+  background: #c0392b;
+  color: #fff;
+  border-color: #c0392b;
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 

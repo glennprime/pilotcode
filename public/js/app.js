@@ -181,6 +181,7 @@ function showApp() {
 
   // Input handling
   setupInput();
+  initVoiceDictation();
   initDingToggle();
   initNtfyToggle();
 
@@ -205,7 +206,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v85';
+  if (versionEl) versionEl.textContent = 'v86';
 }
 
 function setupInput() {
@@ -244,6 +245,72 @@ function setupInput() {
 
   document.getElementById('stop-btn').onclick = () => {
     wsClient.send({ type: 'interrupt' });
+  };
+}
+
+function initVoiceDictation() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return; // hide button on unsupported browsers
+
+  const btn = document.getElementById('mic-btn');
+  btn.style.display = '';
+
+  const input = document.getElementById('message-input');
+  const sendBtn = document.getElementById('send-btn');
+  let recognition = null;
+  let listening = false;
+  let textBeforeDictation = '';
+
+  btn.onclick = () => {
+    if (listening) {
+      recognition.stop();
+      return;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+
+    textBeforeDictation = input.value;
+
+    recognition.onresult = (e) => {
+      let interim = '';
+      let final = '';
+      for (let i = 0; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          final += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+      // Build text: original + finalized speech + interim (greyed via placeholder)
+      input.value = textBeforeDictation + (textBeforeDictation && final ? ' ' : '') + final + (interim ? ' ' + interim : '');
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      sendBtn.disabled = !input.value.trim();
+    };
+
+    recognition.onstart = () => {
+      listening = true;
+      btn.classList.add('mic-active');
+      btn.title = 'Stop dictation';
+    };
+
+    recognition.onend = () => {
+      listening = false;
+      btn.classList.remove('mic-active');
+      btn.title = 'Voice dictation';
+    };
+
+    recognition.onerror = (e) => {
+      if (e.error !== 'aborted') {
+        console.warn('Speech recognition error:', e.error);
+      }
+    };
+
+    recognition.start();
   };
 }
 
