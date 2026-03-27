@@ -30,6 +30,27 @@ export class ImageHandler {
 
     // Drag and drop support
     this.setupDragDrop();
+
+    // Clipboard paste support (Ctrl-V / Cmd-V)
+    this.setupPaste();
+  }
+
+  setupPaste() {
+    document.addEventListener('paste', (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files = [];
+      for (const item of items) {
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        this.handleFiles(files);
+      }
+    });
   }
 
   setupDragDrop() {
