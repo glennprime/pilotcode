@@ -188,6 +188,9 @@ function showApp() {
   initDingToggle();
   initNtfyToggle();
 
+  // Render session list immediately so busy dots are visible without opening the drawer
+  sessionUI.refreshList();
+
   // Show no-session prompt, hide input until a session is active
   showNoSessionPrompt();
 
@@ -209,7 +212,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v89';
+  if (versionEl) versionEl.textContent = 'v90';
 }
 
 function setupInput() {

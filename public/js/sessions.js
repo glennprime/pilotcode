@@ -649,9 +649,27 @@ export class SessionUI {
   updateSessionBusy(sessionId, busy) {
     const item = this.list.querySelector(`[data-session-id="${sessionId}"]`);
     if (!item) return;
-    const dot = item.querySelector('.active-dot');
-    if (dot) {
-      dot.classList.toggle('busy', busy);
+    const nameEl = item.querySelector('.session-item-name');
+    if (!nameEl) return;
+    let dot = nameEl.querySelector('.active-dot');
+    if (busy) {
+      // Ensure dot exists and is marked busy
+      if (!dot) {
+        dot = document.createElement('span');
+        dot.className = 'active-dot busy';
+        nameEl.prepend(dot);
+      } else {
+        dot.classList.add('busy');
+      }
+    } else {
+      // Session went idle — show green active dot (session is still running)
+      if (!dot) {
+        dot = document.createElement('span');
+        dot.className = 'active-dot';
+        nameEl.prepend(dot);
+      } else {
+        dot.classList.remove('busy');
+      }
     }
   }
 }
