@@ -212,7 +212,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v90';
+  if (versionEl) versionEl.textContent = 'v91';
 }
 
 function setupInput() {
@@ -518,17 +518,19 @@ function handleMessage(msg) {
       hideNoSessionPrompt();
       break;
 
-    // Reconnect: process died while we were disconnected — auto-resume once
+    // Reconnect: process died while we were disconnected.
+    // Only auto-resume if Claude was mid-task (wasBusy). If idle, the session
+    // will restart lazily when the user sends their next message.
     case 'session_not_running': {
       const sid = msg.sessionId || wsClient.activeSessionId;
       if (sid) chat.loadHistory(sid);
-      if (sid && !sessionUI._resumeAttempted?.has(sid)) {
+      if (sid && msg.wasBusy && !sessionUI._resumeAttempted?.has(sid)) {
         if (!sessionUI._resumeAttempted) sessionUI._resumeAttempted = new Set();
         sessionUI._resumeAttempted.add(sid);
-        chat.addSystemMessage('Session ended — resuming...');
+        chat.addSystemMessage('Session interrupted mid-task — resuming...');
         wsClient.send({ type: 'resume_session', sessionId: sid });
       } else {
-        chat.addSystemMessage('Session ended. Tap the session in the sidebar to resume.');
+        chat.addSystemMessage('Session ended. Send a message to resume.');
       }
       break;
     }

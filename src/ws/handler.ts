@@ -371,10 +371,24 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           });
           break;
 
-        case 'message':
+        case 'message': {
           // Use pendingProc as fallback if session init hasn't completed yet
-          handleUserMessage(ws, msg, connState.currentProc || connState.pendingProc, connState.currentSessionId);
+          const msgProc = connState.currentProc || connState.pendingProc;
+          if ((!msgProc || !msgProc.isAlive) && connState.currentSessionId) {
+            // Process is dead but user sent a message — lazy-resume the session.
+            // This handles idle sessions that died without auto-resume.
+            const lazySessionId = connState.currentSessionId;
+            sessionLog('LAZY_RESUME', { sessionId: lazySessionId, content: (msg.content || '').slice(0, 50) });
+            ws.send(JSON.stringify({ type: 'system', text: 'Resuming session...' }));
+            detachFromSession(ws, connState);
+            handleResumeSession(ws, { ...msg, type: 'resume_session', sessionId: lazySessionId }, manager, (proc, sid) => {
+              onSessionReady(proc, sid, 'resumed');
+            }, (proc) => { connState.pendingProc = proc; }, msg);
+          } else {
+            handleUserMessage(ws, msg, msgProc, connState.currentSessionId);
+          }
           break;
+        }
 
         case 'permission_response':
           handlePermissionResponse(msg, connState.currentProc);
@@ -443,7 +457,8 @@ function handleResumeSession(
   msg: WSMessage,
   manager: SessionManager,
   setCurrent: (proc: ClaudeProcess, sid: string) => void,
-  onProcSpawned?: (proc: ClaudeProcess) => void
+  onProcSpawned?: (proc: ClaudeProcess) => void,
+  lazyResumeMessage?: WSMessage  // User's pending message that triggered the lazy resume
 ): void {
   const { sessionId } = msg;
   if (!sessionId) {
@@ -504,23 +519,31 @@ function handleResumeSession(
     });
 
     // Claude CLI (2.1.49+) won't emit system init until first stdin message.
-    // Choose message based on whether the session was busy when it last exited:
-    // - true:      session was interrupted mid-work → tell Claude to continue
-    // - false:     session was idle/completed → tell Claude to wait
-    // - undefined: no data (server restarted, lost state) → let Claude decide
-    const wasBusy = sessionExitWasBusy.get(sessionId);
-    sessionExitWasBusy.delete(sessionId);
-    if (wasBusy === true) {
-      sessionLog('RESUME_CONTINUE', { sessionId: validId, reason: 'was_busy_at_exit' });
-      proc.sendMessage('The session was interrupted. Continue where you left off.');
-    } else if (wasBusy === false) {
-      sessionLog('RESUME_WAIT', { sessionId: validId, reason: 'was_idle_at_exit' });
-      proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
+    if (lazyResumeMessage) {
+      // Lazy resume: user sent a message to a dead session. Send their message
+      // directly instead of a generic resume prompt — Claude will see it in context.
+      sessionLog('RESUME_LAZY', { sessionId: validId, content: (lazyResumeMessage.content || '').slice(0, 50) });
+      sessionExitWasBusy.delete(sessionId);
+      handleUserMessage(ws, lazyResumeMessage, proc, validId);
     } else {
-      // No exit state data — e.g. after server restart. Let Claude decide
-      // based on its conversation history rather than guessing wrong.
-      sessionLog('RESUME_AUTO', { sessionId: validId, reason: 'no_exit_state' });
-      proc.sendMessage('Session resumed. Check your conversation history: if you were in the middle of a task, continue where you left off. If you had completed your work or were waiting for input, acknowledge briefly and wait for instructions.');
+      // Choose message based on whether the session was busy when it last exited:
+      // - true:      session was interrupted mid-work → tell Claude to continue
+      // - false:     session was idle/completed → tell Claude to wait
+      // - undefined: no data (server restarted, lost state) → let Claude decide
+      const wasBusy = sessionExitWasBusy.get(sessionId);
+      sessionExitWasBusy.delete(sessionId);
+      if (wasBusy === true) {
+        sessionLog('RESUME_CONTINUE', { sessionId: validId, reason: 'was_busy_at_exit' });
+        proc.sendMessage('The session was interrupted. Continue where you left off.');
+      } else if (wasBusy === false) {
+        sessionLog('RESUME_WAIT', { sessionId: validId, reason: 'was_idle_at_exit' });
+        proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
+      } else {
+        // No exit state data — e.g. after server restart. Let Claude decide
+        // based on its conversation history rather than guessing wrong.
+        sessionLog('RESUME_AUTO', { sessionId: validId, reason: 'no_exit_state' });
+        proc.sendMessage('Session resumed. Check your conversation history: if you were in the middle of a task, continue where you left off. If you had completed your work or were waiting for input, acknowledge briefly and wait for instructions.');
+      }
     }
   } else {
     // No valid session found — start fresh in the same cwd with same model
@@ -538,8 +561,12 @@ function handleResumeSession(
       model, setCurrent, originWs: ws,
     });
 
-    // Kick-start fresh session too
-    proc.sendMessage('hello');
+    // Kick-start fresh session — use lazy message if available
+    if (lazyResumeMessage) {
+      handleUserMessage(ws, lazyResumeMessage, proc, sessionId);
+    } else {
+      proc.sendMessage('hello');
+    }
   }
 }
 
@@ -645,8 +672,10 @@ function handleRejoinSession(
     }
     wireExistingProcess(ws, proc, actualSid, manager);
   } else {
-    // Process is gone — tell the client so it can resume properly
-    ws.send(JSON.stringify({ type: 'session_not_running', sessionId }));
+    // Process is gone — tell the client so it can resume if needed.
+    // Include wasBusy so client only auto-resumes if Claude was mid-task.
+    const exitWasBusy = sessionExitWasBusy.get(sessionId) || false;
+    ws.send(JSON.stringify({ type: 'session_not_running', sessionId, wasBusy: exitWasBusy }));
   }
 }
 
@@ -1061,8 +1090,11 @@ function handleProcessClose(
     return;
   }
 
-  // Process crashed — attempt auto-resume
-  if (code !== 0) {
+  // Process crashed — only auto-resume if Claude was mid-task (busy).
+  // If idle (waiting for user input), there's nothing to recover — the session
+  // will be lazily restarted when the user sends their next message.
+  const wasBusyAtExit = sessionExitWasBusy.get(sessionId);
+  if (code !== 0 && wasBusyAtExit) {
     const now = Date.now();
     let retry = crashRetries.get(sessionId);
     if (!retry || now - retry.firstAttempt > CRASH_RETRY_WINDOW) {
