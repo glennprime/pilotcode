@@ -212,7 +212,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v93';
+  if (versionEl) versionEl.textContent = 'v94';
 }
 
 function setupInput() {
@@ -393,6 +393,7 @@ function sendMessage() {
 }
 
 function doSend(text, images) {
+  chat.suppressReplay = false; // user is actively sending — allow new messages through
   chat.addUserMessage(text, imageHandler.pendingImages.length ? imageHandler.pendingImages : undefined);
 
   wsClient.send({
@@ -416,6 +417,7 @@ function handleMessage(msg) {
     // Direct notification that a session was created — bypasses all broadcast filters.
     // This is the most reliable way to initialize a session on the client.
     case 'session_created':
+      chat.suppressReplay = false;
       sessionUI.setCurrentSession(msg.sessionId);
       chat.setSession(msg.sessionId);
       wsClient.setActiveSession(msg.sessionId);
@@ -502,7 +504,8 @@ function handleMessage(msg) {
       // Chain showThinking AFTER loadHistory resolves so the thinking
       // element isn't cleared by the DOM rebuild inside loadHistory.
       chat.suppressReplay = true;
-      setTimeout(() => { chat.suppressReplay = false; }, 3000);
+      // suppressReplay is cleared when the user sends a message (doSend),
+      // NOT on a timer — buffer replay can take longer than any fixed timeout.
       const loaded = rejoinId ? chat.loadHistory(rejoinId) : Promise.resolve();
       loaded.then(() => {
         if (msg.busy) chat.showThinking('Thinking...');
@@ -512,8 +515,10 @@ function handleMessage(msg) {
     }
 
     // Session is still busy — sent AFTER buffer replay to re-show the spinner
-    // (replayed result messages may have cleared it during replay)
+    // (replayed result messages may have cleared it during replay).
+    // Also clear suppressReplay: buffer replay is done, new live messages follow.
     case 'session_busy':
+      chat.suppressReplay = false;
       chat.showThinking('Thinking...');
       hideNoSessionPrompt();
       break;
