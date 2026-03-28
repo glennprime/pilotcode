@@ -14,7 +14,7 @@ let imageHandler;
 let pendingMessage = null; // queued message while waiting for session init
 let creatingSession = false;
 let sessionGreeted = false; // prevent duplicate auto-greets
-let dingSuppressed = false; // suppress ding during buffer replay
+let dingArmed = false; // only ding when user sent a message and is waiting for result
 let watchMode = false; // true when observing a live session (read-only)
 
 // Boot
@@ -212,7 +212,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v91';
+  if (versionEl) versionEl.textContent = 'v92';
 }
 
 function setupInput() {
@@ -408,6 +408,7 @@ function doSend(text, images) {
   imageHandler.clear();
   chat.showThinking('Thinking...');
   chat.awaitingFirstResponse = true;
+  dingArmed = true;
 }
 
 function handleMessage(msg) {
@@ -432,11 +433,13 @@ function handleMessage(msg) {
         wsClient.send({ type: 'message', content: text });
         chat.showThinking('Thinking...');
         chat.awaitingFirstResponse = true;
+        dingArmed = true;
       } else {
         // Session created from modal with no user message.
         // Server sent a kick-start "hello" — show thinking while Claude responds.
         chat.showThinking('Thinking...');
         chat.awaitingFirstResponse = true;
+        dingArmed = true;
       }
       sessionUI.refreshList();
       break;
@@ -486,9 +489,6 @@ function handleMessage(msg) {
     // so duplicates are skipped. Replayed result messages clear the spinner, but
     // session_busy (sent AFTER replay) re-asserts it for still-busy sessions.
     case 'session_rejoined': {
-      // Suppress ding during buffer replay so old results don't all ding
-      dingSuppressed = true;
-      setTimeout(() => { dingSuppressed = false; }, 2000);
       // Sync session ID — server may have resolved to a different ID via alias chain
       const rejoinId = msg.sessionId || wsClient.activeSessionId;
       if (msg.sessionId && msg.sessionId !== wsClient.activeSessionId) {
@@ -529,6 +529,7 @@ function handleMessage(msg) {
         sessionUI._resumeAttempted.add(sid);
         chat.addSystemMessage('Session interrupted mid-task — resuming...');
         wsClient.send({ type: 'resume_session', sessionId: sid });
+        dingArmed = true;
       } else {
         chat.addSystemMessage('Session ended. Send a message to resume.');
       }
@@ -612,11 +613,12 @@ function handleMessage(msg) {
       break;
     }
 
-    // Play notification ding on successful result
+    // Play notification ding on successful result — only if user sent a message
     case 'result':
-      if (!msg.is_error && !dingSuppressed) {
+      if (!msg.is_error && dingArmed) {
         playDing();
       }
+      dingArmed = false;
       break;
   }
 
