@@ -352,8 +352,15 @@ export class Chat {
 
     switch (msg.type) {
       case 'system':
+        // Handle compaction events from Claude CLI
+        if (msg.subtype === 'status' && msg.status === 'compacting') {
+          this.addSystemMessage('Compacting context...');
+        } else if (msg.subtype === 'compact_boundary') {
+          const preTokens = msg.compact_metadata?.pre_tokens;
+          this._renderCompactDivider({ preTokens });
+          this.pushHistory({ role: 'compact', preTokens });
+        }
         // Don't show "Session started" — it fires on every resume too.
-        // The session_resumed handler already shows a message when relevant.
         break;
 
       case 'assistant': {
@@ -946,22 +953,19 @@ export class Chat {
       // Clear existing message elements to prevent duplication.
       // loadHistory can be called multiple times for the same session
       // (e.g., on boot + session_not_running reconnect), so it must be idempotent.
-      this.messagesEl.querySelectorAll('.message, .file-links, .tool-card, .turn-stats').forEach(el => el.remove());
+      this.messagesEl.querySelectorAll('.message, .file-links, .tool-card, .turn-stats, .load-earlier-btn, .compact-divider').forEach(el => el.remove());
 
-      for (const entry of this.history) {
-        switch (entry.role) {
-          case 'user': {
-            const el = this._createUserMessageEl(entry.text || '', entry.images);
-            this.messagesEl.appendChild(el);
-            break;
-          }
-          case 'assistant':
-            this.addAssistantText(entry.text);
-            break;
-          case 'tool':
-            // Skip — don't replay tool use labels
-            break;
-        }
+      // Only render the last RENDER_CAP entries for fast session switching.
+      // Full history stays in this.history for saving back to disk.
+      const RENDER_CAP = 50;
+      this._renderOffset = Math.max(0, this.history.length - RENDER_CAP);
+
+      if (this._renderOffset > 0) {
+        this._insertLoadEarlierButton();
+      }
+
+      for (let i = this._renderOffset; i < this.history.length; i++) {
+        this._renderHistoryEntry(this.history[i]);
       }
       // Use smart scroll — if the user scrolled up to read history,
       // don't snap them to the bottom on reconnect-triggered reloads.
@@ -969,6 +973,110 @@ export class Chat {
       // so this still scrolls to show the latest messages.
       this.scrollToBottom();
     } catch { /* offline */ }
+  }
+
+  _renderHistoryEntry(entry) {
+    switch (entry.role) {
+      case 'user': {
+        const el = this._createUserMessageEl(entry.text || '', entry.images);
+        this.messagesEl.appendChild(el);
+        break;
+      }
+      case 'assistant':
+        this.addAssistantText(entry.text);
+        break;
+      case 'compact':
+        this._renderCompactDivider(entry);
+        break;
+      case 'tool':
+        // Skip — don't replay tool use labels
+        break;
+    }
+  }
+
+  _insertLoadEarlierButton() {
+    const btn = document.createElement('button');
+    btn.className = 'load-earlier-btn';
+    btn.textContent = `Load earlier messages (${this._renderOffset} hidden)`;
+    btn.onclick = () => this._loadEarlierMessages();
+    this.messagesEl.prepend(btn);
+  }
+
+  _loadEarlierMessages() {
+    const BATCH = 50;
+    const newOffset = Math.max(0, this._renderOffset - BATCH);
+    const entries = this.history.slice(newOffset, this._renderOffset);
+    this._renderOffset = newOffset;
+
+    // Remove old button
+    const oldBtn = this.messagesEl.querySelector('.load-earlier-btn');
+
+    // Remember scroll position so we don't jump
+    const scrollBefore = this.messagesEl.scrollHeight;
+
+    // Render entries before existing messages (after the button if it stays)
+    const firstMsg = this.messagesEl.querySelector('.message, .compact-divider');
+    for (const entry of entries) {
+      const frag = document.createDocumentFragment();
+      this._renderHistoryEntryInto(entry, frag);
+      if (firstMsg) {
+        this.messagesEl.insertBefore(frag, firstMsg);
+      } else {
+        this.messagesEl.appendChild(frag);
+      }
+    }
+
+    // Update or remove the button
+    if (this._renderOffset > 0) {
+      if (oldBtn) oldBtn.textContent = `Load earlier messages (${this._renderOffset} hidden)`;
+    } else {
+      if (oldBtn) oldBtn.remove();
+    }
+
+    // Restore scroll position so content doesn't jump
+    const scrollAfter = this.messagesEl.scrollHeight;
+    this.messagesEl.scrollTop += (scrollAfter - scrollBefore);
+  }
+
+  _renderHistoryEntryInto(entry, container) {
+    switch (entry.role) {
+      case 'user': {
+        const el = this._createUserMessageEl(entry.text || '', entry.images);
+        container.appendChild(el);
+        break;
+      }
+      case 'assistant': {
+        const el = document.createElement('div');
+        el.className = 'message assistant';
+        const content = document.createElement('div');
+        content.className = 'content';
+        content.innerHTML = renderMarkdown(entry.text);
+        addCopyButtons(content);
+        linkifyFilePaths(content, this.sessionCwd);
+        el.appendChild(content);
+        container.appendChild(el);
+        break;
+      }
+      case 'compact':
+        this._renderCompactDividerInto(entry, container);
+        break;
+    }
+  }
+
+  _renderCompactDivider(entry) {
+    const el = document.createElement('div');
+    el.className = 'compact-divider';
+    const tokens = entry.preTokens ? ` (${Math.round(entry.preTokens / 1000)}k tokens before)` : '';
+    el.innerHTML = `<span class="compact-divider-line"></span><span class="compact-divider-text">Context compacted${tokens}</span><span class="compact-divider-line"></span>`;
+    this.messagesEl.appendChild(el);
+  }
+
+  _renderCompactDividerInto(entry, container) {
+    const el = document.createElement('div');
+    el.className = 'compact-divider';
+    const tokens = entry.preTokens ? ` (${Math.round(entry.preTokens / 1000)}k tokens before)` : '';
+    el.innerHTML = `<span class="compact-divider-line"></span><span class="compact-divider-text">Context compacted${tokens}</span><span class="compact-divider-line"></span>`;
+    container.appendChild(el);
   }
 
   async migrateSessionId(oldId, newId) {

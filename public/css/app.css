@@ -308,6 +308,39 @@ html, body {
   border-radius: 12px;
 }
 
+.load-earlier-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: var(--bg-elevated);
+  color: var(--accent);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.load-earlier-btn:active { background: var(--bg-hover); }
+
+.compact-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  width: 100%;
+}
+.compact-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--orange);
+  opacity: 0.4;
+}
+.compact-divider-text {
+  font-size: 11px;
+  color: var(--orange);
+  white-space: nowrap;
+}
+
 /* Markdown content */
 .content h1, .content h2, .content h3 { margin: 8px 0 4px; font-size: 15px; font-weight: 600; }
 .content p { margin: 4px 0; }

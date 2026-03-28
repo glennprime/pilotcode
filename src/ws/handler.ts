@@ -783,6 +783,12 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       }
     }
 
+    // Save compaction boundary markers to history
+    if (sessionId && msg.type === 'system' && (msg as any).subtype === 'compact_boundary') {
+      const preTokens = (msg as any).compact_metadata?.pre_tokens;
+      appendHistoryEntry(sessionId, { role: 'compact', text: 'Context compacted', preTokens });
+    }
+
     // Server-side history saving: persist assistant text so switching sessions doesn't lose messages
     if (sessionId && msg.type === 'assistant' && (msg as any).message?.content) {
       const content = (msg as any).message.content;
@@ -1278,7 +1284,7 @@ function handlePermissionResponse(msg: WSMessage, proc: ClaudeProcess | null): v
 }
 
 /** Append an entry to the server-side history file for a session. */
-function appendHistoryEntry(sessionId: string, entry: { role: string; text: string }): void {
+function appendHistoryEntry(sessionId: string, entry: { role: string; text: string; preTokens?: number }): void {
   const file = join(HISTORY_DIR, `${sessionId}.json`);
   try {
     let history: any[] = [];
