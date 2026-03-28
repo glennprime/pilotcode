@@ -77,6 +77,26 @@ const sessionBusyStates = new Map<string, SessionBusyState>();
 // Used to decide whether to tell Claude to continue or wait on resume.
 const sessionExitWasBusy = new Map<string, boolean>();
 
+// Track total history message count per session (in-memory, seeded on first access).
+// Used by the session list API so the client can detect unseen messages.
+const sessionMessageCounts = new Map<string, number>();
+
+export function getSessionMessageCount(sessionId: string): number {
+  if (sessionMessageCounts.has(sessionId)) return sessionMessageCounts.get(sessionId)!;
+  // Seed from disk on first access
+  const file = join(HISTORY_DIR, `${sessionId}.json`);
+  try {
+    if (existsSync(file)) {
+      const parsed = JSON.parse(readFileSync(file, 'utf-8'));
+      if (Array.isArray(parsed)) {
+        sessionMessageCounts.set(sessionId, parsed.length);
+        return parsed.length;
+      }
+    }
+  } catch {}
+  return 0;
+}
+
 export function getSessionBusyState(sessionId: string): SessionBusyState {
   return sessionBusyStates.get(sessionId) || 'idle';
 }
@@ -1301,6 +1321,7 @@ function appendHistoryEntry(sessionId: string, entry: { role: string; text: stri
     // Keep last 500 entries
     if (history.length > 500) history = history.slice(-500);
     writeFileSync(file, JSON.stringify(history));
+    sessionMessageCounts.set(sessionId, history.length);
   } catch {
     // Don't crash on history save failure
   }

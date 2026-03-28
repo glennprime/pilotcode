@@ -80,14 +80,24 @@ export class SessionUI {
     }
 
     for (const s of sessions) {
+      const unseen = this.getUnseenCount(s.id, s.messageCount || 0);
+      const isYourTurn = !s.busy && unseen > 0;
       const el = document.createElement('div');
       el.className = 'session-item' + (s.id === this.currentSessionId ? ' active' : '');
       el.dataset.sessionId = s.id;
+
+      let dotHtml = '';
+      if (s.busy) dotHtml = '<span class="active-dot busy"></span>';
+      else if (s.active) dotHtml = '<span class="active-dot"></span>';
+
+      const nameClass = isYourTurn ? 'session-item-name your-turn' : 'session-item-name';
+      const badgeHtml = unseen > 0 ? `<span class="unseen-badge">${unseen > 99 ? '99+' : unseen}</span>` : '';
+
       el.innerHTML = `
         <div class="session-item-row">
           <span class="drag-handle">&#x22EE;</span>
-          <div class="session-item-name">
-            ${s.busy ? '<span class="active-dot busy"></span>' : s.active ? '<span class="active-dot"></span>' : ''}${escapeHtml(s.name)}
+          <div class="${nameClass}">
+            ${dotHtml}${escapeHtml(s.name)}${badgeHtml}
           </div>
           <button class="session-delete-btn" title="Delete">&times;</button>
         </div>
@@ -140,6 +150,8 @@ export class SessionUI {
 
       this.list.appendChild(el);
     }
+
+    this.updateHamburgerBadge();
   }
 
   renameSession(sessionId, currentName, el) {
@@ -536,7 +548,37 @@ export class SessionUI {
     this.wsClient.setActiveSession(sessionId);
     this.wsClient.send({ type: 'resume_session', sessionId });
     document.getElementById('session-name').textContent = name || sessionId.slice(0, 8);
+    this.markSessionSeen(sessionId);
     this.onSessionChange(name, sessionId, cwd);
+  }
+
+  /** Mark a session as "seen" — store current message count so we can detect new activity later. */
+  markSessionSeen(sessionId) {
+    const session = this.pilotcodeSessions?.find(s => s.id === sessionId);
+    const count = session?.messageCount || 0;
+    const seen = JSON.parse(localStorage.getItem('pilotcode_seen_counts') || '{}');
+    seen[sessionId] = count;
+    localStorage.setItem('pilotcode_seen_counts', JSON.stringify(seen));
+    this.updateHamburgerBadge();
+  }
+
+  /** Get the number of unseen messages for a session. */
+  getUnseenCount(sessionId, currentMessageCount) {
+    const seen = JSON.parse(localStorage.getItem('pilotcode_seen_counts') || '{}');
+    const lastSeen = seen[sessionId] || 0;
+    return Math.max(0, currentMessageCount - lastSeen);
+  }
+
+  /** Show/hide a dot on the hamburger icon when any session is "your turn". */
+  updateHamburgerBadge() {
+    const btn = document.getElementById('menu-btn');
+    if (!btn) return;
+    const sessions = this.pilotcodeSessions || [];
+    const hasYourTurn = sessions.some(s => {
+      const unseen = this.getUnseenCount(s.id, s.messageCount || 0);
+      return !s.busy && unseen > 0;
+    });
+    btn.classList.toggle('has-notification', hasYourTurn);
   }
 
   // ── External Sessions in Sidebar ──
@@ -635,10 +677,12 @@ export class SessionUI {
       .then((r) => r.json())
       .then((sessions) => {
         if (this.currentSessionId !== sessionId) return;
+        this.pilotcodeSessions = sessions;
         const s = sessions.find((s) => s.id === sessionId);
         const name = s?.name || sessionId.slice(0, 8);
         document.getElementById('session-name').textContent = name;
         localStorage.setItem('pilotcode_session_name', name);
+        this.markSessionSeen(sessionId);
       })
       .catch(() => {
         if (this.currentSessionId !== sessionId) return;

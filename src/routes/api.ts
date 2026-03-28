@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { basename, extname, join, resolve } from 'path';
 import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
-import { sessionBusyState, getSessionBusyState } from '../ws/handler.js';
+import { sessionBusyState, getSessionBusyState, getSessionMessageCount } from '../ws/handler.js';
 import { discoverExternalSessions, discoverActiveTerminalSessions } from '../claude/sessions.js';
 import { requireAuth } from './auth.js';
 
@@ -60,6 +60,7 @@ export function createApiRouter(manager: SessionManager): Router {
         ...s,
         active: active.includes(s.id),
         busy: sessionBusyState.get(s.id) || (active.includes(s.id) && getSessionBusyState(s.id) !== 'idle'),
+        messageCount: getSessionMessageCount(s.id),
       }))
     );
   });
