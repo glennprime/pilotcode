@@ -117,12 +117,19 @@ export class WSClient {
 
   startHeartbeat() {
     this.stopHeartbeat();
-    // Only check for stale connections — don't send app-level pings.
-    // The server already sends WebSocket protocol-level pings every 30s.
+    // Send app-level pings to keep lastMessageTime fresh.
+    // The server responds with a pong (handled silently in onmessage),
+    // which proves the connection is alive even when no session messages flow.
     this.heartbeatInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
-        if (Date.now() - this.lastMessageTime > 60_000) {
-          console.warn('[ws] Connection stale — no messages for 60s, reconnecting');
+        if (Date.now() - this.lastMessageTime > 45_000) {
+          // No messages for 45s — send a ping to check. If the server
+          // responds, lastMessageTime updates and we won't hit the 90s limit.
+          this.ws.send(JSON.stringify({ type: 'ping' }));
+        }
+        if (Date.now() - this.lastMessageTime > 90_000) {
+          // No response to our ping for 90s — connection is truly dead.
+          console.warn('[ws] Connection dead — no response for 90s, reconnecting');
           this.ws.close();
         }
       }
