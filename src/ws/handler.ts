@@ -77,8 +77,9 @@ const sessionBusyStates = new Map<string, SessionBusyState>();
 // Used to decide whether to tell Claude to continue or wait on resume.
 const sessionExitWasBusy = new Map<string, boolean>();
 
-// Track total history message count per session (in-memory, seeded on first access).
-// Used by the session list API so the client can detect unseen messages.
+// Track user-turn count per session (in-memory, seeded on first access).
+// Only counts 'user' role entries so the badge reflects actual conversation turns,
+// not the many assistant streaming chunks that inflate total history length.
 const sessionMessageCounts = new Map<string, number>();
 
 export function getSessionMessageCount(sessionId: string): number {
@@ -89,8 +90,9 @@ export function getSessionMessageCount(sessionId: string): number {
     if (existsSync(file)) {
       const parsed = JSON.parse(readFileSync(file, 'utf-8'));
       if (Array.isArray(parsed)) {
-        sessionMessageCounts.set(sessionId, parsed.length);
-        return parsed.length;
+        const userCount = parsed.filter((e: any) => e.role === 'user').length;
+        sessionMessageCounts.set(sessionId, userCount);
+        return userCount;
       }
     }
   } catch {}
@@ -1321,7 +1323,9 @@ function appendHistoryEntry(sessionId: string, entry: { role: string; text: stri
     // Keep last 500 entries
     if (history.length > 500) history = history.slice(-500);
     writeFileSync(file, JSON.stringify(history));
-    sessionMessageCounts.set(sessionId, history.length);
+    if (entry.role === 'user') {
+      sessionMessageCounts.set(sessionId, (sessionMessageCounts.get(sessionId) || 0) + 1);
+    }
   } catch {
     // Don't crash on history save failure
   }
