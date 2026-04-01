@@ -649,6 +649,14 @@ function handleMessage(msg) {
       }
       dingArmed = false;
       break;
+
+    // Ding when Claude needs user input (plan approval / question)
+    case 'plan_approval':
+    case 'user_question':
+      if (dingArmed) {
+        playDing();
+      }
+      break;
   }
 
   // Secondary session guard: if the message came from a specific session

@@ -110,7 +110,8 @@ export function getSessionBusyState(sessionId: string): SessionBusyState {
 export const sessionBusyState = {
   get(sessionId: string): boolean {
     const state = sessionBusyStates.get(sessionId);
-    return state === 'busy' || state === 'permission';
+    // 'permission' = waiting for user (plan approval / question) — not busy
+    return state === 'busy';
   },
 };
 
@@ -131,8 +132,9 @@ function broadcastGlobal(data: string): void {
 function setSessionBusy(sessionId: string, state: SessionBusyState): void {
   const prev = sessionBusyStates.get(sessionId) || 'idle';
   sessionBusyStates.set(sessionId, state);
-  const wasBusy = prev === 'busy' || prev === 'permission';
-  const isBusy = state === 'busy' || state === 'permission';
+  // 'permission' means waiting for user input (plan approval / question) — not busy from user's POV
+  const wasBusy = prev === 'busy';
+  const isBusy = state === 'busy';
   if (wasBusy !== isBusy) {
     broadcastGlobal(JSON.stringify({ type: 'session_status', sessionId, busy: isBusy }));
   }
