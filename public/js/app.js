@@ -235,7 +235,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v100';
+  if (versionEl) versionEl.textContent = 'v102';
 }
 
 function setupInput() {
@@ -644,6 +644,8 @@ function handleMessage(msg) {
 
     // Play notification ding on successful result — only if user sent a message
     case 'result':
+      // Skip stale results from previous turn — chat.js also guards this
+      if (chat.awaitingFirstResponse && !msg.is_error) break;
       if (!msg.is_error && dingArmed) {
         playDing();
       }
