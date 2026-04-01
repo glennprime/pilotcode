@@ -70,12 +70,28 @@ export class Chat {
     document.getElementById('input-area').classList.toggle('busy', active);
   }
 
-  /**
-   * Build a user message DOM element with action buttons (resend / edit).
-   * Used by both addUserMessage() and loadHistory() to avoid duplication.
-   * @param {string} text - raw message text
-   * @param {Array} images - live image objects ({objectUrl, filename}) OR history filename strings
-   */
+  _copyMessageText(messageEl) {
+    let text;
+    if (messageEl.classList.contains('user')) {
+      text = messageEl.dataset.text || messageEl.querySelector('.user-text')?.textContent || '';
+    } else {
+      text = messageEl.querySelector('.content')?.innerText || '';
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = messageEl.querySelector('.msg-copy');
+      if (btn) { btn.textContent = '\u2713'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1200); }
+    });
+  }
+
+  _addMsgCopyBtn(messageEl) {
+    const btn = document.createElement('button');
+    btn.className = 'msg-copy-btn';
+    btn.title = 'Copy';
+    btn.textContent = '\u{1F4CB}';
+    btn.onclick = (e) => { e.stopPropagation(); this._copyMessageText(messageEl); };
+    messageEl.appendChild(btn);
+  }
+
   _createUserMessageEl(text, images) {
     const el = document.createElement('div');
     el.className = 'message user';
@@ -93,10 +109,15 @@ export class Chat {
     }
     html += `<span class="user-text">${escapeHtml(text)}</span>`;
     html += `<div class="msg-actions">`;
+    html += `<button class="msg-action-btn msg-copy" title="Copy">&#128203;</button>`;
     html += `<button class="msg-action-btn msg-edit" title="Edit">&#9998;</button>`;
     html += `<button class="msg-action-btn msg-resend" title="Resend">&#8635;</button>`;
     html += `</div>`;
     el.innerHTML = html;
+    el.querySelector('.msg-copy').onclick = (e) => {
+      e.stopPropagation();
+      this._copyMessageText(el);
+    };
     return el;
   }
 
@@ -136,6 +157,7 @@ export class Chat {
     addCopyButtons(content);
     linkifyFilePaths(content, this.sessionCwd);
     el.appendChild(content);
+    this._addMsgCopyBtn(el);
     this.messagesEl.appendChild(el);
   }
 
@@ -854,6 +876,9 @@ export class Chat {
         addCopyButtons(content);
         linkifyFilePaths(content, this.sessionCwd);
       }
+      if (!this.currentAssistantEl.querySelector('.msg-copy-btn')) {
+        this._addMsgCopyBtn(this.currentAssistantEl);
+      }
       if (this.currentAssistantText) {
         this.pushHistory({ role: 'assistant', text: this.currentAssistantText });
       }
@@ -1054,6 +1079,7 @@ export class Chat {
         addCopyButtons(content);
         linkifyFilePaths(content, this.sessionCwd);
         el.appendChild(content);
+        this._addMsgCopyBtn(el);
         container.appendChild(el);
         break;
       }

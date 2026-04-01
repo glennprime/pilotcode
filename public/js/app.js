@@ -17,6 +17,26 @@ let sessionGreeted = false; // prevent duplicate auto-greets
 let dingArmed = false; // only ding when user sent a message and is waiting for result
 let watchMode = false; // true when observing a live session (read-only)
 
+function updateSessionIdDisplay(sessionId) {
+  const area = document.getElementById('session-id-area');
+  const text = document.getElementById('session-id-text');
+  const copyBtn = document.getElementById('session-id-copy');
+  if (!area) return;
+  if (sessionId && sessionId !== '__creating__') {
+    text.textContent = sessionId.slice(0, 8);
+    area.style.display = '';
+    area.title = sessionId;
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(sessionId).then(() => {
+        copyBtn.textContent = '\u2713';
+        setTimeout(() => copyBtn.textContent = '\u{1F4CB}', 1200);
+      });
+    };
+  } else {
+    area.style.display = 'none';
+  }
+}
+
 // Boot
 document.addEventListener('DOMContentLoaded', async () => {
   await initMarkdown();
@@ -138,9 +158,11 @@ function showApp() {
       creatingSession = true;
       hideNoSessionPrompt();
       document.getElementById('session-name').textContent = name || 'New Session';
+      updateSessionIdDisplay(null);
       chat.showThinking('Starting session...');
     } else {
       chat.switchSession(sessionId || null);
+      updateSessionIdDisplay(sessionId);
       if (sessionId) hideNoSessionPrompt();
     }
     // Restore draft for incoming session
@@ -162,6 +184,7 @@ function showApp() {
     // Show cached name immediately so header isn't blank during async fetch
     const cachedName = localStorage.getItem('pilotcode_session_name');
     if (cachedName) document.getElementById('session-name').textContent = cachedName;
+    updateSessionIdDisplay(lastSessionId);
     chat.loadHistory(lastSessionId);
     wsClient.setActiveSession(lastSessionId);
     sessionUI.setCurrentSession(lastSessionId);
@@ -426,6 +449,7 @@ function handleMessage(msg) {
       sessionGreeted = true;
       hideNoSessionPrompt();
       document.getElementById('session-name').textContent = msg.name || msg.sessionId.slice(0, 8);
+      updateSessionIdDisplay(msg.sessionId);
       // If user typed a message while session was being created from the modal,
       // show it in chat AND send it to Claude now that the session is ready.
       if (pendingMessage) {
