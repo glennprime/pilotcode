@@ -118,10 +118,10 @@ function resolveDownloadPath(filePath, cwd) {
   return filePath; // can't resolve — try anyway
 }
 
-// Absolute path: /at-least/one-segment/file
-const ABS_PATH_RE = /^\/(?:[\w.@~+-]+\/)+[\w.@~+-]+$/;
+// Absolute path: /at-least/one-segment/file (allows spaces, parens, commas in names)
+const ABS_PATH_RE = /^\/(?:[\w.@~+\- ,()]+\/)+[\w.@~+\- ,()]+$/;
 // Relative path: at-least/one-segment/file.ext (must have extension to avoid false positives)
-const REL_PATH_RE = /^(?:[\w.@~+-]+\/)+[\w.@~+-]+\.\w+$/;
+const REL_PATH_RE = /^(?:[\w.@~+\- ,()]+\/)+[\w.@~+\- ,()]+\.\w+$/;
 
 /** Convert file paths in rendered HTML into clickable download links. */
 export function linkifyFilePaths(container, cwd) {
@@ -151,7 +151,7 @@ export function linkifyFilePaths(container, cwd) {
     for (const node of preTextNodes) {
       if (node.parentElement?.closest('a')) continue;
       const text = node.textContent;
-      const prePathRe = /(\/(?:[\w.@~+-]+\/)+[\w.@~+-]+)/g;
+      const prePathRe = /(\/(?:[\w.@~+\- ,()]+\/)+[\w.@~+\- ,()]+)/g;
       if (!prePathRe.test(text)) continue;
       prePathRe.lastIndex = 0;
 
@@ -159,10 +159,12 @@ export function linkifyFilePaths(container, cwd) {
       let lastIdx = 0;
       let match;
       while ((match = prePathRe.exec(text)) !== null) {
-        if (match.index > lastIdx) {
-          frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+        let filePath = match[1].replace(/[\s,;:!?)]+$/, '');
+        const matchStart = match.index;
+        const matchEnd = matchStart + filePath.length;
+        if (matchStart > lastIdx) {
+          frag.appendChild(document.createTextNode(text.slice(lastIdx, matchStart)));
         }
-        const filePath = match[1];
         const link = document.createElement('a');
         link.href = `/api/download?path=${encodeURIComponent(filePath)}`;
         link.download = filePath.split('/').pop();
@@ -170,7 +172,7 @@ export function linkifyFilePaths(container, cwd) {
         link.className = 'file-path-link pre-path';
         link.textContent = filePath;
         frag.appendChild(link);
-        lastIdx = prePathRe.lastIndex;
+        lastIdx = matchEnd;
       }
       if (lastIdx < text.length) {
         frag.appendChild(document.createTextNode(text.slice(lastIdx)));
@@ -181,7 +183,7 @@ export function linkifyFilePaths(container, cwd) {
 
   // 3) Bare file paths in text nodes (outside <a>, <pre>, <code>)
   // Match absolute paths (3+ segments) and relative paths with extension (2+ segments)
-  const pathRe = /(\/(?:[\w.@~+-]+\/){2,}[\w.@~+-]+|(?:[\w.@~+-]+\/)+[\w.@~+-]+\.\w+)/g;
+  const pathRe = /(\/(?:[\w.@~+\- ,()]+\/){2,}[\w.@~+\- ,()]+|(?:[\w.@~+\- ,()]+\/)+[\w.@~+\- ,()]+\.\w+)/g;
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const textNodes = [];
   while (walker.nextNode()) textNodes.push(walker.currentNode);
@@ -196,10 +198,13 @@ export function linkifyFilePaths(container, cwd) {
     let lastIdx = 0;
     let match;
     while ((match = pathRe.exec(text)) !== null) {
-      if (match.index > lastIdx) {
-        frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+      // Trim trailing spaces/punctuation that the greedy space-aware regex may capture
+      let filePath = match[1].replace(/[\s,;:!?)]+$/, '');
+      const matchStart = match.index;
+      const matchEnd = matchStart + filePath.length;
+      if (matchStart > lastIdx) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx, matchStart)));
       }
-      const filePath = match[1];
       const resolved = resolveDownloadPath(filePath, cwd);
       const link = document.createElement('a');
       link.href = `/api/download?path=${encodeURIComponent(resolved)}`;
@@ -208,7 +213,7 @@ export function linkifyFilePaths(container, cwd) {
       link.className = 'file-path-link bare';
       link.textContent = filePath;
       frag.appendChild(link);
-      lastIdx = pathRe.lastIndex;
+      lastIdx = matchEnd;
     }
     if (lastIdx < text.length) {
       frag.appendChild(document.createTextNode(text.slice(lastIdx)));
