@@ -933,6 +933,14 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
               toolUseId: exitPlanBlock.id,
             }));
             setSessionBusy(sessionId, 'permission');
+            // Push notification — plan needs user approval
+            const planTopic = getNtfyTopic();
+            if (planTopic) {
+              fetch(`https://ntfy.sh/${planTopic}`, {
+                method: 'POST',
+                body: `${name || 'Claude'} — Plan approval needed`,
+              }).catch(() => {});
+            }
             proc.interrupt();
           } else {
             // Retry — suppress the entire assistant message so no duplicate card
@@ -953,6 +961,14 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
               toolUseId: askQuestionBlock.id,
             }));
             setSessionBusy(sessionId, 'permission');
+            // Push notification — Claude is asking a question
+            const qTopic = getNtfyTopic();
+            if (qTopic) {
+              fetch(`https://ntfy.sh/${qTopic}`, {
+                method: 'POST',
+                body: `${name || 'Claude'} — Question needs your input`,
+              }).catch(() => {});
+            }
             proc.interrupt();
           } else {
             log('ws', `AskUserQuestion retry suppressed in session ${sessionId}`);

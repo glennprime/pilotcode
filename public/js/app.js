@@ -235,7 +235,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v104';
+  if (versionEl) versionEl.textContent = 'v105';
 }
 
 function setupInput() {
@@ -652,12 +652,10 @@ function handleMessage(msg) {
       dingArmed = false;
       break;
 
-    // Ding when Claude needs user input (plan approval / question)
+    // Always ding when Claude needs user input — these require action regardless
     case 'plan_approval':
     case 'user_question':
-      if (dingArmed) {
-        playDing();
-      }
+      playDing();
       break;
   }
 
