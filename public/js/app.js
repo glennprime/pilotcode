@@ -235,7 +235,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v103';
+  if (versionEl) versionEl.textContent = 'v104';
 }
 
 function setupInput() {

@@ -33,6 +33,19 @@ export async function initMarkdown() {
       // Fallback for older/newer marked versions
     }
 
+    // Disable GFM strikethrough — Claude uses ~ for "approximately" (e.g. ~500 kHz)
+    // and the parser misinterprets paired tildes as strikethrough formatting.
+    try {
+      window.marked.use({
+        extensions: [{
+          name: 'del',
+          level: 'inline',
+          start(src) { return undefined; },
+          tokenizer(src) { return undefined; },
+        }],
+      });
+    } catch { /* older marked version — ignore */ }
+
     // Use marked-highlight extension pattern if available, otherwise
     // highlight code blocks after rendering via addCopyButtons
     if (hlLoaded && window.hljs) {
