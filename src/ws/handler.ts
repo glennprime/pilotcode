@@ -426,10 +426,16 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           handleQuestionResponse(msg, connState.currentProc, connState.currentSessionId);
           break;
 
-        case 'interrupt':
-          connState.currentProc?.interrupt();
-          log('ws', `Interrupt sent for session ${connState.currentSessionId}`);
+        case 'interrupt': {
+          const intProc = connState.currentProc || connState.pendingProc;
+          if (intProc) {
+            intProc.interrupt();
+            log('ws', `Interrupt sent for session ${connState.currentSessionId}`);
+          } else {
+            log('ws', `Interrupt ignored — no process for session ${connState.currentSessionId}`, 'warn');
+          }
           break;
+        }
 
         case 'ping':
           if (ws.readyState === WebSocket.OPEN) {
