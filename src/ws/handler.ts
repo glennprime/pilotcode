@@ -85,18 +85,18 @@ const sessionMessageCounts = new Map<string, number>();
 // Track context size (cache_read_input_tokens) per session from result messages.
 const sessionContextTokens = new Map<string, number>();
 
-// Accumulate assistant text during streaming — saved to history on result.
-// Within a single turn, Claude can cycle through multiple assistant→tool_use→assistant
-// sequences.  We track each turn segment separately so intermediate responses aren't lost.
-const pendingAssistantSegments = new Map<string, string[]>();
-// The latest text within the current segment (for detecting streaming vs new segment).
+// Track the CURRENTLY STREAMING assistant segment. Completed segments are saved
+// to the history file immediately, so only the in-progress segment lives in memory.
+// This means a server restart only risks losing the segment actively being streamed,
+// not all the completed segments from the turn.
+const pendingAssistantSegments = new Map<string, string>();
+// The latest text snapshot (for detecting streaming continuation vs new segment).
 const pendingAssistantLatest = new Map<string, string>();
 
-/** Get any in-progress assistant text segments that haven't been saved to history yet (pre-result). */
+/** Get the in-progress assistant text that hasn't been saved to history yet (pre-result). */
 export function getPendingAssistantSegments(sessionId: string): string[] {
-  const segs = pendingAssistantSegments.get(sessionId);
-  if (!segs || segs.length === 0) return [];
-  return [...segs];
+  const seg = pendingAssistantSegments.get(sessionId);
+  return seg ? [seg] : [];
 }
 
 // ── Persist session runtime state across server restarts ──
@@ -105,6 +105,7 @@ const STATE_FILE = join(DATA_DIR, 'session-state.json');
 interface PersistedState {
   busy: Record<string, SessionBusyState>;
   contextTokens: Record<string, number>;
+  pendingText?: Record<string, string>;  // in-progress streaming text
 }
 
 function loadPersistedState(): void {
@@ -138,6 +139,15 @@ function loadPersistedState(): void {
         sessionContextTokens.set(id, tokens);
       }
     }
+    // Restore in-progress streaming text — save it to history immediately
+    // so it's available when the client reconnects and fetches history.
+    if (data.pendingText) {
+      for (const [id, text] of Object.entries(data.pendingText)) {
+        if (liveSessionIds.has(id) && text) {
+          appendHistoryEntry(id, { role: 'assistant', text });
+        }
+      }
+    }
     log('server', `Restored session state for ${sessionBusyStates.size} busy sessions, ${sessionContextTokens.size} context entries`);
   } catch (err: any) {
     log('server', `Failed to load session state: ${err.message}`, 'warn');
@@ -149,6 +159,7 @@ function persistState(): void {
     const data: PersistedState = {
       busy: Object.fromEntries(sessionBusyStates),
       contextTokens: Object.fromEntries(sessionContextTokens),
+      pendingText: Object.fromEntries(pendingAssistantSegments),
     };
     writeFileSync(STATE_FILE, JSON.stringify(data));
   } catch {}
@@ -1111,8 +1122,8 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
 
     // Server-side history saving: accumulate assistant text during streaming.
     // Within one turn Claude can cycle assistant→tool_use→assistant multiple times.
-    // Each cycle is a "segment"; we detect a new segment when the incoming text
-    // doesn't extend the previous text (i.e. it's not just a longer streaming update).
+    // Each cycle is a "segment". Completed segments are saved to disk immediately
+    // (not batched until result) so they survive server restarts.
     if (sessionId && msg.type === 'assistant' && (msg as any).message?.content) {
       const content = (msg as any).message.content;
       const textParts = Array.isArray(content)
@@ -1121,32 +1132,32 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       if (textParts) {
         const latest = pendingAssistantLatest.get(sessionId) || '';
         const isStreaming = latest && textParts.startsWith(latest);
-        if (!pendingAssistantSegments.has(sessionId)) {
-          pendingAssistantSegments.set(sessionId, []);
-        }
-        const segs = pendingAssistantSegments.get(sessionId)!;
-        if (isStreaming || segs.length === 0) {
-          // Streaming update within current segment — replace last segment
-          if (segs.length === 0) segs.push(textParts);
-          else segs[segs.length - 1] = textParts;
+        // currentSegment tracks ONLY the segment still being streamed.
+        // Completed segments are flushed to history immediately.
+        let currentSeg = pendingAssistantSegments.get(sessionId);
+        if (isStreaming || !currentSeg) {
+          // Streaming update within current segment — replace it
+          pendingAssistantSegments.set(sessionId, textParts);
         } else {
-          // New segment (after tool use) — push a new entry
-          segs.push(textParts);
+          // New segment starting — the previous segment is complete.
+          // Save it to disk NOW so it survives server restarts.
+          appendHistoryEntry(sessionId, { role: 'assistant', text: currentSeg });
+          // Start tracking the new segment
+          pendingAssistantSegments.set(sessionId, textParts);
+          persistState(); // persist new segment ref for crash recovery
         }
         pendingAssistantLatest.set(sessionId, textParts);
       }
     }
     if (sessionId && msg.type === 'result') {
-      const segs = pendingAssistantSegments.get(sessionId);
-      if (segs && segs.length > 0) {
-        // Save each segment as its own history entry — preserves visual
-        // separation between responses within a multi-tool-use turn.
-        for (const seg of segs) {
-          appendHistoryEntry(sessionId, { role: 'assistant', text: seg });
-        }
-        pendingAssistantSegments.delete(sessionId);
-        pendingAssistantLatest.delete(sessionId);
+      // Save the final segment (still streaming when result arrived)
+      const lastSeg = pendingAssistantSegments.get(sessionId);
+      if (lastSeg) {
+        appendHistoryEntry(sessionId, { role: 'assistant', text: lastSeg });
       }
+      pendingAssistantSegments.delete(sessionId);
+      pendingAssistantLatest.delete(sessionId);
+      persistState(); // clear persisted pending text
     }
 
     // Cache permission request inputs for later response
