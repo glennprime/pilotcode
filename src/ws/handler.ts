@@ -92,11 +92,11 @@ const pendingAssistantSegments = new Map<string, string[]>();
 // The latest text within the current segment (for detecting streaming vs new segment).
 const pendingAssistantLatest = new Map<string, string>();
 
-/** Get any in-progress assistant text that hasn't been saved to history yet (pre-result). */
-export function getPendingAssistantText(sessionId: string): string | undefined {
+/** Get any in-progress assistant text segments that haven't been saved to history yet (pre-result). */
+export function getPendingAssistantSegments(sessionId: string): string[] {
   const segs = pendingAssistantSegments.get(sessionId);
-  if (!segs || segs.length === 0) return undefined;
-  return segs.join('\n\n');
+  if (!segs || segs.length === 0) return [];
+  return [...segs];
 }
 
 // ── Persist session runtime state across server restarts ──
@@ -1139,8 +1139,11 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
     if (sessionId && msg.type === 'result') {
       const segs = pendingAssistantSegments.get(sessionId);
       if (segs && segs.length > 0) {
-        const fullText = segs.join('\n\n');
-        appendHistoryEntry(sessionId, { role: 'assistant', text: fullText });
+        // Save each segment as its own history entry — preserves visual
+        // separation between responses within a multi-tool-use turn.
+        for (const seg of segs) {
+          appendHistoryEntry(sessionId, { role: 'assistant', text: seg });
+        }
         pendingAssistantSegments.delete(sessionId);
         pendingAssistantLatest.delete(sessionId);
       }

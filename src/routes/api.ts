@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { basename, extname, join, resolve } from 'path';
 import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
-import { sessionBusyState, getSessionBusyState, getSessionMessageCount, getSessionContextTokens, getPendingAssistantText } from '../ws/handler.js';
+import { sessionBusyState, getSessionBusyState, getSessionMessageCount, getSessionContextTokens, getPendingAssistantSegments } from '../ws/handler.js';
 import { discoverExternalSessions, discoverActiveTerminalSessions } from '../claude/sessions.js';
 import { requireAuth } from './auth.js';
 
@@ -139,15 +139,15 @@ export function createApiRouter(manager: SessionManager): Router {
         if (Array.isArray(parsed)) data = parsed;
       }
     } catch {}
-    // Append any in-progress assistant text that hasn't been saved yet (pre-result).
+    // Append any in-progress assistant text segments that haven't been saved yet (pre-result).
     // This prevents messages from being "lost" when switching back to a session
-    // where Claude is still streaming.
-    const pending = getPendingAssistantText(sessionId);
-    if (pending) {
+    // where Claude is still streaming. Each segment becomes its own entry for
+    // visual separation between responses within a turn.
+    const pendingSegs = getPendingAssistantSegments(sessionId);
+    for (const seg of pendingSegs) {
       const last = data[data.length - 1];
-      // Only append if not already the last entry (dedup)
-      if (!last || last.role !== 'assistant' || last.text !== pending) {
-        data.push({ role: 'assistant', text: pending });
+      if (!last || last.role !== 'assistant' || last.text !== seg) {
+        data.push({ role: 'assistant', text: seg });
       }
     }
     res.json(data);
