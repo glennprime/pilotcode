@@ -9,6 +9,8 @@ export interface SessionMeta {
   model?: string;
   createdAt: string;
   lastUsed: string;
+  archived?: boolean;
+  continuedAs?: string; // session ID that replaced this one
 }
 
 export class SessionManager {

@@ -36,13 +36,15 @@ export class WSClient {
       this.lastMessageTime = Date.now();
       this.startHeartbeat();
 
-      // Re-associate with the active session after reconnecting
+      // Re-associate with the active session after reconnecting.
+      // Pending messages are NOT flushed here — they wait until the
+      // rejoin response confirms which session we're attached to.
       if (this.activeSessionId) {
+        this._awaitingRejoin = true;
         this.send({ type: 'rejoin_session', sessionId: this.activeSessionId });
+      } else {
+        this.flushPending();
       }
-
-      // Flush any messages that were queued while disconnected
-      this.flushPending();
     };
 
     this.ws.onmessage = (e) => {
@@ -51,9 +53,17 @@ export class WSClient {
         const msg = JSON.parse(e.data);
 
         // Filter out messages from other sessions to prevent cross-contamination.
-        // Messages without _sid (direct sends like session_rejoined) always pass through.
-        if (msg._sid && this.activeSessionId && msg._sid !== this.activeSessionId) {
-          return; // wrong session — discard
+        // For content message types (assistant, result, user_broadcast), REQUIRE _sid
+        // to match — don't let untagged content through.
+        // Metadata messages without _sid (session_rejoined, session_status) pass through.
+        const CONTENT_TYPES = ['assistant', 'result', 'user_broadcast', 'control_request'];
+        if (this.activeSessionId) {
+          if (msg._sid && msg._sid !== this.activeSessionId) {
+            return; // wrong session — discard
+          }
+          if (!msg._sid && CONTENT_TYPES.includes(msg.type)) {
+            return; // untagged content message — unsafe, discard
+          }
         }
         // Preserve source session for secondary checks, then strip the tag
         const fromSession = msg._sid || null;
@@ -88,6 +98,11 @@ export class WSClient {
   }
 
   send(msg) {
+    // Queue user-facing messages while waiting for rejoin to complete
+    if (this._awaitingRejoin && (msg.type === 'message' || msg.type === 'interrupt' || msg.type === 'permission_response')) {
+      this.pendingMessages.push(msg);
+      return false;
+    }
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
       return true;
@@ -101,14 +116,17 @@ export class WSClient {
 
   flushPending() {
     if (this.pendingMessages.length === 0) return;
-    // Small delay to let rejoin_session complete first
-    setTimeout(() => {
-      const msgs = [...this.pendingMessages];
-      this.pendingMessages = [];
-      for (const msg of msgs) {
-        this.send(msg);
-      }
-    }, 500);
+    const msgs = [...this.pendingMessages];
+    this.pendingMessages = [];
+    for (const msg of msgs) {
+      this.send(msg);
+    }
+  }
+
+  /** Call when rejoin response arrives to flush queued messages safely. */
+  onRejoinComplete() {
+    this._awaitingRejoin = false;
+    this.flushPending();
   }
 
   setActiveSession(sessionId) {

@@ -114,6 +114,17 @@ html, body {
 
 #app-view.active { display: flex; }
 
+/* ── Offline Banner ── */
+#offline-banner {
+  background: var(--yellow, #f59e0b);
+  color: #000;
+  text-align: center;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 100;
+}
+
 /* ── Header ── */
 #header {
   display: flex;
@@ -209,6 +220,103 @@ html, body {
 }
 
 .header-btn:active { background: var(--bg-hover); }
+
+/* ── Archives Chip ── */
+#archives-chip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+#archives-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#archives-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+#archives-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+#archives-dropdown.hidden {
+  display: none;
+}
+
+.archive-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.archive-item:last-child {
+  border-bottom: none;
+}
+
+.archive-item:hover {
+  background: var(--bg-hover);
+}
+
+.archive-name {
+  color: var(--text);
+}
+
+.archive-date {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 12px;
+}
+
+/* ── Archive Banner ── */
+#archive-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+#archive-back-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+#archive-back-btn:hover {
+  background: var(--bg-hover);
+}
 
 /* ── No Session Prompt ── */
 #no-session-prompt {
@@ -314,6 +422,7 @@ html, body {
   border-radius: 16px 16px 4px 16px;
   max-width: 85%;
   word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .message.assistant {
@@ -920,6 +1029,59 @@ html, body {
   line-height: 1.3;
 }
 
+/* ── Question Card Dismiss & Freetext ── */
+.question-card {
+  position: relative;
+}
+
+.question-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.question-dismiss:hover {
+  opacity: 1;
+  background: var(--bg-hover);
+}
+
+.question-freetext {
+  margin-top: 8px;
+}
+
+.question-freetext-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.question-freetext-input:focus {
+  border-color: var(--accent);
+}
+
+.question-freetext-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Plan Approval (ExitPlanMode) ── */
 .plan-approval-card {
   background: var(--bg-surface);
@@ -1051,6 +1213,56 @@ html, body {
   50% { opacity: 0.6; }
 }
 
+
+/* ── Session Navigation Arrows ── */
+.session-nav-arrow {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 28px;
+  line-height: 1;
+  width: 28px;
+  height: 56px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-nav-arrow:hover {
+  opacity: 1;
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.session-nav-arrow:disabled {
+  opacity: 0.15;
+  cursor: default;
+  pointer-events: none;
+}
+
+.session-nav-arrow.left {
+  left: 4px;
+  border-radius: 0 6px 6px 0;
+}
+
+.session-nav-arrow.right {
+  right: 4px;
+  border-radius: 6px 0 0 6px;
+}
+
+/* Hide on narrow screens where they'd overlap chat */
+@media (max-width: 500px) {
+  .session-nav-arrow { display: none; }
+}
 
 /* ── Scroll-to-Bottom Button ── */
 #scroll-bottom-btn {
@@ -1454,6 +1666,77 @@ html, body {
   font-size: 11px;
   color: var(--text-muted);
   margin-top: 2px;
+}
+
+.context-health.yellow {
+  color: #e5a100;
+  font-weight: 600;
+}
+
+.context-health.red {
+  color: var(--red, #e53935);
+  font-weight: 600;
+}
+
+.session-renew-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.session-renew-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.session-renew-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.session-renew-btn.continue {
+  border-color: #e5a100;
+  color: #e5a100;
+}
+
+.session-renew-btn.continue:hover {
+  background: rgba(229, 161, 0, 0.15);
+}
+
+.session-renew-btn.holding {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.renew-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.session-renew-btn.continue .renew-fill {
+  background: rgba(229, 161, 0, 0.25);
+}
+
+.session-renew-btn.fresh .renew-fill {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.session-renew-btn > *:not(.renew-fill) {
+  position: relative;
+  z-index: 1;
 }
 
 .session-item .active-dot {

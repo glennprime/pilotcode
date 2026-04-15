@@ -23,6 +23,14 @@ app.use(cookieParser());
 app.use(authRouter);
 app.use(createApiRouter(manager));
 
+// Service worker must never be cached — stale SW prevents frontend updates
+app.get('/sw.js', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile(join(import.meta.dirname, '..', 'public', 'sw.js'));
+});
+
 // Static files
 app.use(express.static(join(import.meta.dirname, '..', 'public')));
 app.use('/data/images', express.static(IMAGES_DIR));
@@ -30,7 +38,8 @@ app.use('/data/images', express.static(IMAGES_DIR));
 // WebSocket
 setupWebSocket(wss, manager);
 
-// Graceful shutdown — kill old server cleanly on SIGTERM/SIGINT so tsx --watch doesn't pile up
+// Graceful shutdown — close server cleanly. Claude processes spawned with
+// detached: true survive PilotCode restarts and are reconnected on next start.
 function shutdown() {
   log('server', 'Shutting down...');
   wss.close();

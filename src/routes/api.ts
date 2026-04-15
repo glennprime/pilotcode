@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { basename, extname, join, resolve } from 'path';
 import { DATA_DIR, IMAGES_DIR, DEFAULT_CWD, getNtfyTopic, setNtfyTopic } from '../config.js';
 import { SessionManager } from '../claude/manager.js';
-import { sessionBusyState, getSessionBusyState, getSessionMessageCount } from '../ws/handler.js';
+import { sessionBusyState, getSessionBusyState, getSessionMessageCount, getSessionContextTokens, getPendingAssistantText } from '../ws/handler.js';
 import { discoverExternalSessions, discoverActiveTerminalSessions } from '../claude/sessions.js';
 import { requireAuth } from './auth.js';
 
@@ -61,6 +61,7 @@ export function createApiRouter(manager: SessionManager): Router {
         active: active.includes(s.id),
         busy: sessionBusyState.get(s.id) || (active.includes(s.id) && getSessionBusyState(s.id) !== 'idle'),
         messageCount: getSessionMessageCount(s.id),
+        contextTokens: getSessionContextTokens(s.id),
       }))
     );
   });
@@ -116,19 +117,40 @@ export function createApiRouter(manager: SessionManager): Router {
     res.json({ ok: true });
   });
 
+  // Archived sessions for a given cwd
+  router.get('/api/archives', requireAuth, (req: Request, res: Response) => {
+    const cwd = req.query.cwd as string;
+    if (!cwd) { res.json([]); return; }
+    const sessions = manager.loadSessions();
+    const archives = sessions
+      .filter((s) => s.archived && s.cwd === cwd)
+      .sort((a, b) => new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime());
+    res.json(archives);
+  });
+
   // Chat history
   router.get('/api/history/:sessionId', requireAuth, (req: Request, res: Response) => {
-    const file = join(HISTORY_DIR, `${req.params.sessionId}.json`);
-    if (!existsSync(file)) {
-      res.json([]);
-      return;
-    }
+    const sessionId = req.params.sessionId;
+    const file = join(HISTORY_DIR, `${sessionId}.json`);
+    let data: any[] = [];
     try {
-      const data = JSON.parse(readFileSync(file, 'utf-8'));
-      res.json(data);
-    } catch {
-      res.json([]);
+      if (existsSync(file)) {
+        const parsed = JSON.parse(readFileSync(file, 'utf-8'));
+        if (Array.isArray(parsed)) data = parsed;
+      }
+    } catch {}
+    // Append any in-progress assistant text that hasn't been saved yet (pre-result).
+    // This prevents messages from being "lost" when switching back to a session
+    // where Claude is still streaming.
+    const pending = getPendingAssistantText(sessionId);
+    if (pending) {
+      const last = data[data.length - 1];
+      // Only append if not already the last entry (dedup)
+      if (!last || last.role !== 'assistant' || last.text !== pending) {
+        data.push({ role: 'assistant', text: pending });
+      }
     }
+    res.json(data);
   });
 
   router.post('/api/history/:sessionId', requireAuth, (req: Request, res: Response) => {
@@ -138,8 +160,19 @@ export function createApiRouter(manager: SessionManager): Router {
       res.status(400).json({ error: 'Expected array' });
       return;
     }
-    // Keep last 500 entries
-    const trimmed = entries.slice(-500);
+    // Merge: keep whichever version is longer. Server-side appendHistoryEntry
+    // may have saved messages while the client was on a different session,
+    // so the client's copy can be stale. Don't let it overwrite newer data.
+    let existing: unknown[] = [];
+    try {
+      if (existsSync(file)) {
+        const raw = readFileSync(file, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) existing = parsed;
+      }
+    } catch {}
+    const merged = entries.length >= existing.length ? entries : existing;
+    const trimmed = merged.slice(-500);
     writeFileSync(file, JSON.stringify(trimmed));
     res.json({ ok: true });
   });

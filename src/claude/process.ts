@@ -58,6 +58,7 @@ export class ClaudeProcess extends EventEmitter {
       cwd: this.options.cwd || process.cwd(),
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
+      detached: true,  // own process group — survives PilotCode restarts
     });
 
     this.alive = true;

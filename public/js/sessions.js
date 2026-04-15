@@ -79,7 +79,11 @@ export class SessionUI {
       sessions.sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed));
     }
 
-    for (const s of sessions) {
+    // Store full list for archive lookups, filter archived from sidebar
+    this.allSessions = sessions;
+    const activeSessions = sessions.filter(s => !s.archived);
+
+    for (const s of activeSessions) {
       const unseen = this.getUnseenCount(s.id, s.messageCount || 0);
       const isYourTurn = !s.busy && unseen > 0;
       const el = document.createElement('div');
@@ -93,6 +97,15 @@ export class SessionUI {
       const nameClass = isYourTurn ? 'session-item-name your-turn' : 'session-item-name';
       const badgeHtml = unseen > 0 ? `<span class="unseen-badge">${unseen > 99 ? '99+' : unseen}</span>` : '';
 
+      const healthHtml = this._contextHealthHtml(s.contextTokens || 0);
+
+      const renewHtml = (s.contextTokens || 0) >= 80_000
+        ? `<div class="session-renew-row">
+             <button class="session-renew-btn continue" data-action="continue" title="Continue work in a fresh session with handoff">Continue in New</button>
+             <button class="session-renew-btn fresh" data-action="fresh" title="Start a blank session in the same project">Start Fresh</button>
+           </div>`
+        : '';
+
       el.innerHTML = `
         <div class="session-item-row">
           <span class="drag-handle">&#x22EE;</span>
@@ -101,7 +114,8 @@ export class SessionUI {
           </div>
           <button class="session-delete-btn" title="Delete">&times;</button>
         </div>
-        <div class="session-item-meta">${escapeHtml(s.cwd)} &middot; ${s.model ? shortModel(s.model) : 'Sonnet'} &middot; ${timeAgo(s.lastUsed)}</div>
+        <div class="session-item-meta">${escapeHtml(s.cwd)} &middot; ${s.model ? shortModel(s.model) : 'Sonnet'} &middot; ${timeAgo(s.lastUsed)}${healthHtml}</div>
+        ${renewHtml}
       `;
 
       // Delete button
@@ -112,10 +126,74 @@ export class SessionUI {
         }
       };
 
+      // Renew buttons — press-and-hold (4s) to fire
+      el.querySelectorAll('.session-renew-btn').forEach((btn) => {
+        const HOLD_MS = 4000;
+        let holdTimer = null;
+        let animFrame = null;
+        let startTime = 0;
+
+        // Add fill overlay
+        const fill = document.createElement('span');
+        fill.className = 'renew-fill';
+        btn.style.position = 'relative';
+        btn.style.overflow = 'hidden';
+        btn.appendChild(fill);
+
+        const startHold = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          startTime = Date.now();
+          fill.style.width = '0%';
+          fill.classList.add('active');
+          btn.classList.add('holding');
+
+          const tick = () => {
+            const elapsed = Date.now() - startTime;
+            const pct = Math.min(100, (elapsed / HOLD_MS) * 100);
+            fill.style.width = pct + '%';
+            if (elapsed >= HOLD_MS) {
+              cancelHold();
+              fireAction();
+              return;
+            }
+            animFrame = requestAnimationFrame(tick);
+          };
+          animFrame = requestAnimationFrame(tick);
+        };
+
+        const cancelHold = () => {
+          if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+          fill.classList.remove('active');
+          fill.style.width = '0%';
+          btn.classList.remove('holding');
+        };
+
+        const fireAction = () => {
+          const action = btn.dataset.action;
+          if (action === 'continue') {
+            this.wsClient.send({ type: 'continue_new_session', sessionId: s.id });
+            this.closeDrawer();
+          } else if (action === 'fresh') {
+            this.wsClient.send({ type: 'create_session', name: s.name, cwd: s.cwd, model: s.model });
+            this.closeDrawer();
+          }
+        };
+
+        btn.addEventListener('pointerdown', startHold);
+        btn.addEventListener('pointerup', cancelHold);
+        btn.addEventListener('pointerleave', cancelHold);
+        btn.addEventListener('pointercancel', cancelHold);
+        // Prevent context menu on long press (mobile)
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
+        // Prevent default click
+        btn.onclick = (e) => { e.stopPropagation(); e.preventDefault(); };
+      });
+
       // Tap anywhere else to switch session
       el.onclick = () => {
         if (this.isDragging) return; // don't switch during drag
-        this.resumeSession(s.id, s.name, s.cwd);
+        this.resumeSession(s.id, s.name, s.cwd, s.active);
         this.closeDrawer();
       };
 
@@ -540,13 +618,18 @@ export class SessionUI {
     this.onSessionChange(name, '__creating__', cwdPath);
   }
 
-  resumeSession(sessionId, name, cwd) {
+  resumeSession(sessionId, name, cwd, isActive) {
     if (sessionId === this.currentSessionId) return; // already active
     this.currentSessionId = sessionId;
     localStorage.setItem('pilotcode_session', sessionId);
     if (cwd) localStorage.setItem('pilotcode_session_cwd', cwd);
     this.wsClient.setActiveSession(sessionId);
-    this.wsClient.send({ type: 'resume_session', sessionId });
+    // If the process is already running, rejoin (instant) instead of resume (spawns new process)
+    if (isActive) {
+      this.wsClient.send({ type: 'rejoin_session', sessionId });
+    } else {
+      this.wsClient.send({ type: 'resume_session', sessionId });
+    }
     document.getElementById('session-name').textContent = name || sessionId.slice(0, 8);
     this.markSessionSeen(sessionId);
     this.onSessionChange(name, sessionId, cwd);
@@ -688,6 +771,66 @@ export class SessionUI {
         if (this.currentSessionId !== sessionId) return;
         document.getElementById('session-name').textContent = sessionId.slice(0, 8);
       });
+  }
+
+  /** Get ordered session IDs as displayed in the sidebar. */
+  getOrderedSessionIds() {
+    const items = this.list.querySelectorAll('.session-item[data-session-id]');
+    return [...items].map(el => el.dataset.sessionId);
+  }
+
+  /** Navigate to adjacent session. direction: -1 (prev) or +1 (next). Returns true if navigated. */
+  navigateSession(direction) {
+    const ids = this.getOrderedSessionIds();
+    if (ids.length === 0) return false;
+    const currentIdx = ids.indexOf(this.currentSessionId);
+    const newIdx = currentIdx + direction;
+    if (newIdx < 0 || newIdx >= ids.length) return false;
+    const targetId = ids[newIdx];
+    const session = this.pilotcodeSessions?.find(s => s.id === targetId);
+    if (!session) return false;
+    this.resumeSession(session.id, session.name, session.cwd, session.active);
+    return true;
+  }
+
+  /** Update nav arrow enabled/disabled state. */
+  updateNavArrows() {
+    const ids = this.getOrderedSessionIds();
+    const idx = ids.indexOf(this.currentSessionId);
+    const prevBtn = document.getElementById('nav-prev');
+    const nextBtn = document.getElementById('nav-next');
+    if (prevBtn) prevBtn.disabled = (idx <= 0);
+    if (nextBtn) nextBtn.disabled = (idx < 0 || idx >= ids.length - 1);
+  }
+
+  _contextHealthHtml(tokens) {
+    if (!tokens || tokens < 80_000) return '';
+    const k = Math.round(tokens / 1000);
+    if (tokens < 150_000) return ` &middot; <span class="context-health yellow" title="${k}k context tokens">&#x26A0; ${k}k</span>`;
+    return ` &middot; <span class="context-health red" title="${k}k context tokens — consider starting fresh">&#x26A0; ${k}k</span>`;
+  }
+
+  updateSessionContext(sessionId, contextTokens) {
+    const item = this.list.querySelector(`[data-session-id="${sessionId}"]`);
+    if (!item) return;
+    const meta = item.querySelector('.session-item-meta');
+    if (!meta) return;
+    // Remove old health indicator
+    const old = meta.querySelector('.context-health');
+    if (old) old.remove();
+    // Add new one
+    if (contextTokens >= 80_000) {
+      const k = Math.round(contextTokens / 1000);
+      const span = document.createElement('span');
+      span.className = contextTokens >= 150_000 ? 'context-health red' : 'context-health yellow';
+      span.title = contextTokens >= 150_000 ? `${k}k context tokens — consider starting fresh` : `${k}k context tokens`;
+      span.innerHTML = ` &#x26A0; ${k}k`;
+      meta.appendChild(document.createTextNode(' \u00b7 '));
+      meta.appendChild(span);
+    }
+    // Store for later use
+    if (!this._contextTokensCache) this._contextTokensCache = {};
+    this._contextTokensCache[sessionId] = contextTokens;
   }
 
   updateSessionBusy(sessionId, busy) {

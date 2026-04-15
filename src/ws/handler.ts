@@ -82,6 +82,79 @@ const sessionExitWasBusy = new Map<string, boolean>();
 // not the many assistant streaming chunks that inflate total history length.
 const sessionMessageCounts = new Map<string, number>();
 
+// Track context size (cache_read_input_tokens) per session from result messages.
+const sessionContextTokens = new Map<string, number>();
+
+// Accumulate assistant text during streaming — saved to history on result.
+const pendingAssistantText = new Map<string, string>();
+
+/** Get any in-progress assistant text that hasn't been saved to history yet (pre-result). */
+export function getPendingAssistantText(sessionId: string): string | undefined {
+  return pendingAssistantText.get(sessionId);
+}
+
+// ── Persist session runtime state across server restarts ──
+const STATE_FILE = join(DATA_DIR, 'session-state.json');
+
+interface PersistedState {
+  busy: Record<string, SessionBusyState>;
+  contextTokens: Record<string, number>;
+}
+
+function loadPersistedState(): void {
+  try {
+    if (!existsSync(STATE_FILE)) return;
+    const data: PersistedState = JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
+
+    // Find which sessions still have a live Claude process (orphaned from previous server)
+    let liveSessionIds: Set<string>;
+    try {
+      const { execSync } = require('child_process');
+      const psOutput = execSync('ps aux', { encoding: 'utf-8', timeout: 5000 });
+      liveSessionIds = new Set<string>();
+      for (const line of psOutput.split('\n')) {
+        const match = line.match(/claude\s.*--resume\s+([0-9a-f-]{36})/);
+        if (match) liveSessionIds.add(match[1]);
+      }
+    } catch {
+      // If ps fails, trust persisted state as-is
+      liveSessionIds = new Set(Object.keys(data.busy));
+    }
+
+    // Only restore state for sessions that still have a running process
+    for (const [id, state] of Object.entries(data.busy)) {
+      if (liveSessionIds.has(id) && state !== 'idle') {
+        sessionBusyStates.set(id, state);
+      }
+    }
+    for (const [id, tokens] of Object.entries(data.contextTokens)) {
+      if (liveSessionIds.has(id) && tokens > 0) {
+        sessionContextTokens.set(id, tokens);
+      }
+    }
+    log('server', `Restored session state for ${sessionBusyStates.size} busy sessions, ${sessionContextTokens.size} context entries`);
+  } catch (err: any) {
+    log('server', `Failed to load session state: ${err.message}`, 'warn');
+  }
+}
+
+function persistState(): void {
+  try {
+    const data: PersistedState = {
+      busy: Object.fromEntries(sessionBusyStates),
+      contextTokens: Object.fromEntries(sessionContextTokens),
+    };
+    writeFileSync(STATE_FILE, JSON.stringify(data));
+  } catch {}
+}
+
+// Load persisted state on module init
+loadPersistedState();
+
+export function getSessionContextTokens(sessionId: string): number {
+  return sessionContextTokens.get(sessionId) || 0;
+}
+
 export function getSessionMessageCount(sessionId: string): number {
   if (sessionMessageCounts.has(sessionId)) return sessionMessageCounts.get(sessionId)!;
   // Seed from disk on first access
@@ -132,6 +205,7 @@ function broadcastGlobal(data: string): void {
 function setSessionBusy(sessionId: string, state: SessionBusyState): void {
   const prev = sessionBusyStates.get(sessionId) || 'idle';
   sessionBusyStates.set(sessionId, state);
+  persistState();
   // 'permission' means waiting for user input (plan approval / question) — not busy from user's POV
   const wasBusy = prev === 'busy';
   const isBusy = state === 'busy';
@@ -335,8 +409,20 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
       pendingProc: null as ClaudeProcess | null,
     };
 
+    // Monotonically increasing generation counter — bumped every time the user
+    // switches sessions.  Used to detect stale setCurrent callbacks that fire
+    // after the user already moved on to a different session.
+    let connGeneration = 0;
+
     /** Callback for when a session is fully initialized (system message received). */
-    function onSessionReady(proc: ClaudeProcess, sid: string, action: string): void {
+    function onSessionReady(proc: ClaudeProcess, sid: string, action: string, expectedGeneration?: number): void {
+      // Guard: if the user switched sessions since this callback was registered,
+      // don't hijack the ws back.  Without this guard, a slow-starting process
+      // would re-add the ws to the OLD session's client set, causing bleedover.
+      if (expectedGeneration !== undefined && expectedGeneration !== connGeneration) {
+        log('ws', `Ignoring stale onSessionReady for ${sid} (gen ${expectedGeneration} vs current ${connGeneration}) — ws moved to ${connState.currentSessionId}`);
+        return;
+      }
       connState.currentProc = proc;
       connState.pendingProc = null;
       connState.currentSessionId = sid;
@@ -356,29 +442,36 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
       log('ws', `Received: ${msg.type}${msg.sessionId ? ` (session: ${msg.sessionId})` : ''}`);
 
       switch (msg.type) {
-        case 'create_session':
+        case 'create_session': {
           detachFromSession(ws, connState);
+          const gen1 = ++connGeneration;
           handleCreateSession(ws, msg, manager, (proc, sid) => {
-            onSessionReady(proc, sid, 'created');
+            onSessionReady(proc, sid, 'created', gen1);
           }, (proc) => { connState.pendingProc = proc; });
           break;
+        }
 
-        case 'resume_session':
+        case 'resume_session': {
           detachFromSession(ws, connState);
+          const gen2 = ++connGeneration;
           handleResumeSession(ws, msg, manager, (proc, sid) => {
-            onSessionReady(proc, sid, 'resumed');
+            onSessionReady(proc, sid, 'resumed', gen2);
           }, (proc) => { connState.pendingProc = proc; });
           break;
+        }
 
-        case 'connect_external_session':
+        case 'connect_external_session': {
           detachFromSession(ws, connState);
+          const gen3 = ++connGeneration;
           handleConnectExternalSession(ws, msg, manager, (proc, sid) => {
-            onSessionReady(proc, sid, 'connected-external');
+            onSessionReady(proc, sid, 'connected-external', gen3);
           }, (proc) => { connState.pendingProc = proc; });
           break;
+        }
 
         case 'watch_session':
           detachFromSession(ws, connState);
+          ++connGeneration;
           stopWatcher(ws);
           handleWatchSession(ws, msg);
           break;
@@ -388,12 +481,16 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           ws.send(JSON.stringify({ type: 'watch_stopped' }));
           break;
 
-        case 'rejoin_session':
+        case 'rejoin_session': {
           detachFromSession(ws, connState);
+          const gen5 = ++connGeneration;
           handleRejoinSession(ws, msg, manager, (proc, sid) => {
-            onSessionReady(proc, sid, 'rejoined');
+            onSessionReady(proc, sid, 'rejoined', gen5);
+          }, (sid) => {
+            connState.currentSessionId = sid;
           });
           break;
+        }
 
         case 'message': {
           // Use pendingProc as fallback if session init hasn't completed yet
@@ -405,8 +502,9 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
             sessionLog('LAZY_RESUME', { sessionId: lazySessionId, content: (msg.content || '').slice(0, 50) });
             ws.send(JSON.stringify({ type: 'system', text: 'Resuming session...' }));
             detachFromSession(ws, connState);
+            const genLazy = ++connGeneration;
             handleResumeSession(ws, { ...msg, type: 'resume_session', sessionId: lazySessionId }, manager, (proc, sid) => {
-              onSessionReady(proc, sid, 'resumed');
+              onSessionReady(proc, sid, 'resumed', genLazy);
             }, (proc) => { connState.pendingProc = proc; }, msg);
           } else {
             handleUserMessage(ws, msg, msgProc, connState.currentSessionId);
@@ -437,11 +535,34 @@ export function setupWebSocket(wss: WebSocketServer, manager: SessionManager): v
           break;
         }
 
+        case 'force_stop': {
+          const sid = connState.currentSessionId;
+          if (sid) {
+            log('ws', `Force stop requested for session ${sid}`);
+            manager.killProcess(sid);
+            setSessionBusy(sid, 'idle');
+          }
+          break;
+        }
+
         case 'ping':
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'pong' }));
           }
           break;
+
+        case 'continue_new_session': {
+          const oldSid = msg.sessionId;
+          if (!oldSid) {
+            ws.send(JSON.stringify({ type: 'error', error: 'sessionId required' }));
+            break;
+          }
+          detachFromSession(ws, connState);
+          handleContinueNewSession(ws, msg, manager, (proc, sid) => {
+            onSessionReady(proc, sid, 'continued-new');
+          }, (proc) => { connState.pendingProc = proc; });
+          break;
+        }
 
         default:
           log('ws', `Unknown message type: ${msg.type}`, 'warn');
@@ -480,6 +601,153 @@ function handleCreateSession(
   // Send exactly ONE message to kick-start the session.
   const initMsg = msg.initialMessage || 'hello';
   proc.sendMessage(initMsg);
+}
+
+function handleContinueNewSession(
+  ws: WebSocket,
+  msg: WSMessage,
+  manager: SessionManager,
+  setCurrent: (proc: ClaudeProcess, sid: string) => void,
+  onProcSpawned?: (proc: ClaudeProcess) => void
+): void {
+  const oldSessionId = msg.sessionId;
+  const sessions = manager.loadSessions();
+  const meta = sessions.find((s) => s.id === oldSessionId);
+  if (!meta) {
+    ws.send(JSON.stringify({ type: 'error', error: 'Session not found' }));
+    return;
+  }
+  const { cwd, model, name } = meta;
+  sessionLog('CONTINUE_NEW', { oldSessionId, name, cwd });
+
+  ws.send(JSON.stringify({ type: 'session_continued', oldSessionId, text: 'Preparing handoff from previous session...' }));
+
+  // Try to get handoff from old session if alive
+  const oldProc = manager.getProcess(oldSessionId);
+  if (oldProc && oldProc.isAlive) {
+    requestHandoff(oldProc, oldSessionId, (handoffText) => {
+      const seedPrompt = buildSeedPrompt(handoffText, null, cwd);
+      spawnContinuedSession(ws, manager, { name, cwd, model, seedPrompt, oldSessionId }, setCurrent, onProcSpawned);
+      // Kill old session after handoff
+      manager.killProcess(oldSessionId);
+    });
+  } else {
+    // Old session dead — synthesize from history
+    const historyText = synthesizeFromHistory(oldSessionId);
+    const seedPrompt = buildSeedPrompt(null, historyText, cwd);
+    spawnContinuedSession(ws, manager, { name, cwd, model, seedPrompt, oldSessionId }, setCurrent, onProcSpawned);
+  }
+}
+
+/** Ask a running session to write a handoff summary. Calls back with the text, or null on timeout. */
+function requestHandoff(proc: ClaudeProcess, sessionId: string, cb: (text: string | null) => void): void {
+  const HANDOFF_TIMEOUT = 60_000;
+  let done = false;
+
+  const handoffPrompt = 'Summarize your current state in a compact handoff document. Include: (1) what task you are working on, (2) what is done so far, (3) what remains, (4) key decisions made and why. Be concise — this will seed a new session that continues your work. Output the summary directly as text, do not write any files.';
+
+  const onMessage = (msg: SDKMessage) => {
+    if (done) return;
+    if (msg.type === 'result') {
+      done = true;
+      proc.removeListener('message', onMessage);
+      clearTimeout(timer);
+      const resultText = (msg as any).result || null;
+      cb(resultText);
+    }
+  };
+
+  proc.on('message', onMessage);
+  proc.sendMessage(handoffPrompt);
+
+  const timer = setTimeout(() => {
+    if (done) return;
+    done = true;
+    proc.removeListener('message', onMessage);
+    log('ws', `Handoff timed out for session ${sessionId} — falling back to history`, 'warn');
+    const historyText = synthesizeFromHistory(sessionId);
+    cb(historyText ? `[Handoff timed out — synthesized from recent history]\n\n${historyText}` : null);
+  }, HANDOFF_TIMEOUT);
+}
+
+/** Build a transcript excerpt from PilotCode's server-side history file. */
+function synthesizeFromHistory(sessionId: string): string | null {
+  const file = join(HISTORY_DIR, `${sessionId}.json`);
+  try {
+    if (!existsSync(file)) return null;
+    const history: any[] = JSON.parse(readFileSync(file, 'utf-8'));
+    if (!Array.isArray(history) || history.length === 0) return null;
+
+    // Find the last compaction boundary and take everything after it
+    let startIdx = 0;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role === 'compact') {
+        startIdx = i + 1;
+        break;
+      }
+    }
+
+    // Take at most 20 recent entries after last compaction
+    const recent = history.slice(Math.max(startIdx, history.length - 20));
+    if (recent.length === 0) return null;
+
+    return recent.map((e: any) => {
+      const role = e.role === 'user' ? 'User' : e.role === 'assistant' ? 'Assistant' : 'System';
+      const text = (e.text || '').slice(0, 2000); // cap each entry
+      return `**${role}:** ${text}`;
+    }).join('\n\n');
+  } catch {
+    return null;
+  }
+}
+
+/** Build the seed prompt for the new session. */
+function buildSeedPrompt(handoffText: string | null, historyText: string | null, cwd: string): string {
+  const context = handoffText || historyText || 'No handoff data available.';
+  // Git state will be read by Claude on its own — just reference it in the prompt
+  return `You're picking up work from a previous session in this project (${cwd}).
+
+## Handoff from previous session:
+${context}
+
+Review this context. Acknowledge what you understand about the current state, then wait for the user's next instruction. Do not repeat the handoff content back — just confirm you're oriented and ready.`;
+}
+
+/** Spawn a new session with a seed prompt to continue work. */
+function spawnContinuedSession(
+  ws: WebSocket,
+  manager: SessionManager,
+  opts: { name: string; cwd: string; model?: string; seedPrompt: string; oldSessionId?: string },
+  setCurrent: (proc: ClaudeProcess, sid: string) => void,
+  onProcSpawned?: (proc: ClaudeProcess) => void
+): void {
+  const { name, cwd, model, seedPrompt, oldSessionId } = opts;
+  sessionLog('CONTINUE_SPAWN', { name, cwd, model: model || 'default', oldSessionId: oldSessionId || 'none' });
+  const proc = manager.createProcess({ cwd, model });
+  if (onProcSpawned) onProcSpawned(proc);
+
+  // Archive old session once we know the new session ID
+  if (oldSessionId) {
+    proc.once('message', (msg: SDKMessage) => {
+      if (msg.type === 'system' && (msg as any).session_id) {
+        const newSid = (msg as any).session_id;
+        const sessions = manager.loadSessions();
+        const old = sessions.find((s) => s.id === oldSessionId);
+        if (old) {
+          old.archived = true;
+          old.continuedAs = newSid;
+          manager.saveSessions(sessions);
+          sessionLog('ARCHIVED', { oldSessionId, newSessionId: newSid });
+        }
+      }
+    });
+  }
+
+  ensureBroadcastWired({
+    proc, knownSessionId: null, manager, name, cwd,
+    model, setCurrent, originWs: ws,
+  });
+  proc.sendMessage(seedPrompt);
 }
 
 function handleResumeSession(
@@ -678,7 +946,8 @@ function handleRejoinSession(
   ws: WebSocket,
   msg: WSMessage,
   manager: SessionManager,
-  setCurrent: (proc: ClaudeProcess, sid: string) => void
+  setCurrent: (proc: ClaudeProcess, sid: string) => void,
+  setSessionOnly?: (sid: string) => void
 ): void {
   const { sessionId } = msg;
   if (!sessionId) {
@@ -703,9 +972,13 @@ function handleRejoinSession(
     wireExistingProcess(ws, proc, actualSid, manager);
   } else {
     // Process is gone — tell the client so it can resume if needed.
-    // Include wasBusy so client only auto-resumes if Claude was mid-task.
-    const exitWasBusy = sessionExitWasBusy.get(sessionId) || false;
-    ws.send(JSON.stringify({ type: 'session_not_running', sessionId, wasBusy: exitWasBusy }));
+    // Include wasBusy: check in-memory exit state first, then fall back to persisted state
+    // (persisted state survives server restarts; in-memory does not).
+    const exitWasBusy = sessionExitWasBusy.get(sessionId)
+      ?? (getSessionBusyState(sessionId) === 'busy');
+    // Set connState.currentSessionId so lazy-resume works when user sends a message
+    if (setSessionOnly) setSessionOnly(sessionId);
+    ws.send(JSON.stringify({ type: 'session_not_running', sessionId, wasBusy: !!exitWasBusy }));
   }
 }
 
@@ -795,6 +1068,17 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       } else if (msg.type === 'result') {
         setSessionBusy(sessionId, 'idle');
 
+        // Track context size from result usage data
+        const usage = (msg as any).usage;
+        if (usage) {
+          const contextTokens = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+          if (contextTokens > 0) {
+            sessionContextTokens.set(sessionId, contextTokens);
+            persistState();
+            broadcastGlobal(JSON.stringify({ type: 'session_context', sessionId, contextTokens }));
+          }
+        }
+
         // Detect "prompt too long" error — context is full and unrecoverable
         if ((msg as any).is_error && typeof (msg as any).result === 'string' &&
             (msg as any).result.toLowerCase().includes('prompt is too long')) {
@@ -819,14 +1103,22 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       appendHistoryEntry(sessionId, { role: 'compact', text: 'Context compacted', preTokens });
     }
 
-    // Server-side history saving: persist assistant text so switching sessions doesn't lose messages
+    // Server-side history saving: accumulate assistant text during streaming,
+    // save only on result to avoid partial/duplicate entries.
     if (sessionId && msg.type === 'assistant' && (msg as any).message?.content) {
       const content = (msg as any).message.content;
       const textParts = Array.isArray(content)
         ? content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('')
         : typeof content === 'string' ? content : '';
       if (textParts) {
-        appendHistoryEntry(sessionId, { role: 'assistant', text: textParts });
+        pendingAssistantText.set(sessionId, textParts);
+      }
+    }
+    if (sessionId && msg.type === 'result') {
+      const pendingText = pendingAssistantText.get(sessionId);
+      if (pendingText) {
+        appendHistoryEntry(sessionId, { role: 'assistant', text: pendingText });
+        pendingAssistantText.delete(sessionId);
       }
     }
 

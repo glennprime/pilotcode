@@ -16,6 +16,8 @@ let creatingSession = false;
 let sessionGreeted = false; // prevent duplicate auto-greets
 let dingArmed = false; // only ding when user sent a message and is waiting for result
 let watchMode = false; // true when observing a live session (read-only)
+let archiveMode = false; // true when viewing an archived session (read-only)
+let archiveReturnSessionId = null; // session to return to when exiting archive mode
 
 function updateSessionIdDisplay(sessionId) {
   const area = document.getElementById('session-id-area');
@@ -53,8 +55,39 @@ async function checkAuth() {
       showLogin();
     }
   } catch {
-    showLogin();
+    // Network error — if we have evidence of a prior session, show offline state
+    // instead of the login screen (the auth cookie is still valid).
+    const hadSession = localStorage.getItem('pilotcode_session');
+    if (hadSession) {
+      showApp();
+      showOfflineBanner();
+    } else {
+      showLogin();
+    }
   }
+}
+
+function showOfflineBanner() {
+  let banner = document.getElementById('offline-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'offline-banner';
+    banner.innerHTML = 'No connection to server &mdash; retrying...';
+    document.getElementById('app-view').prepend(banner);
+  }
+  banner.style.display = '';
+
+  // Retry connection periodically
+  const retryInterval = setInterval(async () => {
+    try {
+      const res = await fetch('/api/auth/check');
+      const data = await res.json();
+      if (data.authenticated) {
+        clearInterval(retryInterval);
+        banner.style.display = 'none';
+      }
+    } catch { /* still offline */ }
+  }, 5000);
 }
 
 function showLogin() {
@@ -120,21 +153,28 @@ function showApp() {
   };
 
   // Draft message persistence — save/restore partial typed text per session
+  // Uses localStorage so drafts survive tab closure and browser restart.
+  let _draftTimer = null;
   const saveDraft = () => {
     const sid = chat.sessionId;
     if (!sid) return;
     const text = document.getElementById('message-input').value;
-    const drafts = JSON.parse(sessionStorage.getItem('pilotcode_drafts') || '{}');
+    const drafts = JSON.parse(localStorage.getItem('pilotcode_drafts') || '{}');
     if (text.trim()) {
       drafts[sid] = text;
     } else {
       delete drafts[sid];
     }
-    sessionStorage.setItem('pilotcode_drafts', JSON.stringify(drafts));
+    localStorage.setItem('pilotcode_drafts', JSON.stringify(drafts));
   };
+  const saveDraftDebounced = () => {
+    clearTimeout(_draftTimer);
+    _draftTimer = setTimeout(saveDraft, 500);
+  };
+  window._saveDraftDebounced = saveDraftDebounced;
   const loadDraft = (sid) => {
     const input = document.getElementById('message-input');
-    const drafts = JSON.parse(sessionStorage.getItem('pilotcode_drafts') || '{}');
+    const drafts = JSON.parse(localStorage.getItem('pilotcode_drafts') || '{}');
     const text = (sid && drafts[sid]) || '';
     input.value = text;
     input.style.height = 'auto';
@@ -150,7 +190,10 @@ function showApp() {
     saveDraft();
     sessionGreeted = !!sessionId;
     if (cwd) chat.sessionCwd = cwd;
+    if (archiveMode) exitArchiveMode();
+    refreshArchivesChip(cwd || null);
     pendingMessage = null;
+    dingArmed = false; // don't beep when visiting a session — user can see it
 
     if (sessionId === '__creating__') {
       // New session from modal — show chat immediately with "connecting" state
@@ -167,11 +210,34 @@ function showApp() {
     }
     // Restore draft for incoming session
     loadDraft(sessionId);
+    // Update nav arrows for new position
+    sessionUI.updateNavArrows();
   });
 
   // Images
   imageHandler = new ImageHandler((images) => {
     renderImagePreview(images, (i) => imageHandler.removeImage(i));
+  });
+
+  // Scroll position persistence — save on scroll (debounced), restore on session load
+  let _scrollTimer = null;
+  const messagesEl = document.getElementById('messages');
+  const saveScrollPos = () => {
+    const sid = chat?.sessionId;
+    if (!sid || !messagesEl) return;
+    localStorage.setItem('pilotcode_scroll_' + sid, String(messagesEl.scrollTop));
+  };
+  const restoreScrollPos = (sid) => {
+    if (!sid || !messagesEl) return;
+    const saved = localStorage.getItem('pilotcode_scroll_' + sid);
+    if (saved) {
+      requestAnimationFrame(() => { messagesEl.scrollTop = parseInt(saved, 10); });
+    }
+  };
+  window._restoreScrollPos = restoreScrollPos;
+  messagesEl.addEventListener('scroll', () => {
+    clearTimeout(_scrollTimer);
+    _scrollTimer = setTimeout(saveScrollPos, 300);
   });
 
   // Auto-resume last session before connecting
@@ -185,9 +251,10 @@ function showApp() {
     const cachedName = localStorage.getItem('pilotcode_session_name');
     if (cachedName) document.getElementById('session-name').textContent = cachedName;
     updateSessionIdDisplay(lastSessionId);
-    chat.loadHistory(lastSessionId);
+    chat.loadHistory(lastSessionId).then(() => restoreScrollPos(lastSessionId));
     wsClient.setActiveSession(lastSessionId);
     sessionUI.setCurrentSession(lastSessionId);
+    refreshArchivesChip(chat.sessionCwd || null);
     loadDraft(lastSessionId);
   }
 
@@ -197,10 +264,18 @@ function showApp() {
   // Proactive reconnect when user returns to the app (mobile background, tab switch)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      // If WS is dead, force immediate reconnect instead of waiting for backoff
+      // If WS is dead, force immediate reconnect instead of waiting for backoff.
+      // Reconnect calls rejoin_session which triggers loadHistory.
       if (wsClient.ws?.readyState !== WebSocket.OPEN && wsClient.ws?.readyState !== WebSocket.CONNECTING) {
         wsClient.reconnectDelay = 100; // near-instant
         wsClient.connect();
+      } else if (chat.sessionId) {
+        // WS appears alive but may be a zombie (browser suspended the tab and
+        // the readyState is stale). Always refresh history from disk so messages
+        // that arrived while the tab was backgrounded appear immediately instead
+        // of waiting for the heartbeat timeout (up to 90s) to detect a dead
+        // connection and trigger a reconnect + loadHistory cycle.
+        chat.loadHistory(chat.sessionId);
       }
     }
   });
@@ -210,12 +285,41 @@ function showApp() {
   initVoiceDictation();
   initDingToggle();
   initNtfyToggle();
+  initArchives();
 
   // Render session list immediately so busy dots are visible without opening the drawer
-  sessionUI.refreshList();
+  sessionUI.refreshList().then(() => sessionUI.updateNavArrows());
 
-  // Show no-session prompt, hide input until a session is active
-  showNoSessionPrompt();
+  // Session navigation arrows
+  document.getElementById('nav-prev').onclick = () => {
+    sessionUI.navigateSession(-1);
+    sessionUI.updateNavArrows();
+  };
+  document.getElementById('nav-next').onclick = () => {
+    sessionUI.navigateSession(1);
+    sessionUI.updateNavArrows();
+  };
+
+  // Ctrl+Arrow shortcuts: left/right to switch sessions, down to scroll to bottom
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // Don't hijack Ctrl+Arrow when the user is editing text (word-jump)
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+        e.preventDefault();
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        sessionUI.navigateSession(dir);
+        sessionUI.updateNavArrows();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        chat.forceScrollToBottom();
+      }
+    }
+  });
+
+  // Show no-session prompt only if we didn't restore a session from localStorage
+  if (!lastSessionId) showNoSessionPrompt();
 
   // Wire "New Session" button in the center prompt
   document.getElementById('start-session-btn').onclick = () => {
@@ -235,7 +339,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v106';
+  if (versionEl) versionEl.textContent = 'v126';
 }
 
 function setupInput() {
@@ -246,6 +350,7 @@ function setupInput() {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     sendBtn.disabled = !input.value.trim() && imageHandler.pendingImages.length === 0;
+    if (window._saveDraftDebounced) window._saveDraftDebounced();
   });
 
   // Double-tap Enter to send. Single Enter adds a newline normally.
@@ -272,8 +377,26 @@ function setupInput() {
 
   sendBtn.onclick = () => sendMessage();
 
+  let stopTimer = null;
   document.getElementById('stop-btn').onclick = () => {
+    if (stopTimer) {
+      // Already waiting — escalate immediately
+      clearTimeout(stopTimer);
+      stopTimer = null;
+      wsClient.send({ type: 'force_stop' });
+      return;
+    }
     wsClient.send({ type: 'interrupt' });
+    // If no result within 10s, escalate to force kill
+    stopTimer = setTimeout(() => {
+      stopTimer = null;
+      wsClient.send({ type: 'force_stop' });
+    }, 10_000);
+  };
+
+  // Clear the escalation timer when a result arrives (session goes idle)
+  window.__clearStopTimer = () => {
+    if (stopTimer) { clearTimeout(stopTimer); stopTimer = null; }
   };
 }
 
@@ -425,8 +548,10 @@ function doSend(text, images) {
     images: images.length > 0 ? images : undefined,
   });
 
-  document.getElementById('message-input').value = '';
-  document.getElementById('message-input').style.height = 'auto';
+  const inputEl = document.getElementById('message-input');
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  inputEl.blur(); // release focus so Ctrl+Arrow keys work for session navigation
   document.getElementById('send-btn').disabled = true;
 
   imageHandler.clear();
@@ -440,6 +565,13 @@ function handleMessage(msg) {
     // Direct notification that a session was created — bypasses all broadcast filters.
     // This is the most reliable way to initialize a session on the client.
     case 'session_created':
+      // Only switch to the new session if WE initiated the creation.
+      // Without this guard, broadcastGlobal causes ALL tabs to hijack
+      // to whatever session was most recently created/resumed.
+      if (!creatingSession) {
+        sessionUI.refreshList();
+        break;
+      }
       chat.suppressReplay = false;
       sessionUI.setCurrentSession(msg.sessionId);
       chat.setSession(msg.sessionId);
@@ -523,6 +655,8 @@ function handleMessage(msg) {
         sessionUI.currentSessionId = msg.sessionId;
         localStorage.setItem('pilotcode_session', msg.sessionId);
       }
+      // Rejoin confirmed — safe to flush queued messages now
+      wsClient.onRejoinComplete();
       // Reload history from disk — picks up messages that arrived while
       // the user was away (phone locked, tab backgrounded, etc.).
       // Chain showThinking AFTER loadHistory resolves so the thinking
@@ -533,6 +667,11 @@ function handleMessage(msg) {
       const loaded = rejoinId ? chat.loadHistory(rejoinId) : Promise.resolve();
       loaded.then(() => {
         if (msg.busy) chat.showThinking('Thinking...');
+        if (rejoinId) window._restoreScrollPos?.(rejoinId);
+        // If history is empty but session is live, let user know
+        if (chat.history.length === 0) {
+          chat.addSystemMessage('Session connected. Chat history was cleared during a server restart — your conversation with Claude is intact.');
+        }
       });
       hideNoSessionPrompt();
       break;
@@ -551,8 +690,10 @@ function handleMessage(msg) {
     // Only auto-resume if Claude was mid-task (wasBusy). If idle, the session
     // will restart lazily when the user sends their next message.
     case 'session_not_running': {
+      // Rejoin resolved (session gone) — safe to flush queued messages
+      wsClient.onRejoinComplete();
       const sid = msg.sessionId || wsClient.activeSessionId;
-      if (sid) chat.loadHistory(sid);
+      if (sid) chat.loadHistory(sid).then(() => window._restoreScrollPos?.(sid));
       if (sid && msg.wasBusy && !sessionUI._resumeAttempted?.has(sid)) {
         if (!sessionUI._resumeAttempted) sessionUI._resumeAttempted = new Set();
         sessionUI._resumeAttempted.add(sid);
@@ -631,6 +772,28 @@ function handleMessage(msg) {
     // Session busy/idle status update (from any session)
     case 'session_status':
       sessionUI.updateSessionBusy(msg.sessionId, msg.busy);
+      // Ding when a different session finishes — alerts user to check it
+      if (!msg.busy && msg.sessionId !== chat.sessionId) {
+        playDing();
+      }
+      break;
+
+    // Session context size update
+    case 'session_context':
+      sessionUI.updateSessionContext(msg.sessionId, msg.contextTokens);
+      break;
+
+    // System message from server (e.g. handoff progress)
+    case 'system_message':
+      chat.addSystemMessage(msg.text || '');
+      break;
+
+    // Transitioning to a continued new session — clear the chat
+    case 'session_continued':
+      chat.switchSession(null); // clear chat
+      chat.addSystemMessage(msg.text || 'Continuing in new session...');
+      chat.showThinking('Preparing handoff...');
+      hideNoSessionPrompt();
       break;
 
     // User message from another device
@@ -642,20 +805,10 @@ function handleMessage(msg) {
       break;
     }
 
-    // Play notification ding on successful result — only if user sent a message
+    // Result received — don't ding here (user is viewing this session).
+    // Cross-session dings are handled by session_status above.
     case 'result':
-      // Skip stale results from previous turn — chat.js also guards this
-      if (chat.awaitingFirstResponse && !msg.is_error) break;
-      if (!msg.is_error && dingArmed) {
-        playDing();
-      }
       dingArmed = false;
-      break;
-
-    // Always ding when Claude needs user input — these require action regardless
-    case 'plan_approval':
-    case 'user_question':
-      playDing();
       break;
   }
 
@@ -821,12 +974,107 @@ function renderWatchMessage(m) {
   }
 }
 
+// ── Archive Mode ──
+
+function initArchives() {
+  const chip = document.getElementById('archives-chip');
+  const dropdown = document.getElementById('archives-dropdown');
+  const backBtn = document.getElementById('archive-back-btn');
+
+  chip.onclick = () => {
+    dropdown.classList.toggle('hidden');
+  };
+
+  // Close dropdown on outside click
+  document.addEventListener('click', (e) => {
+    if (!chip.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+
+  backBtn.onclick = () => exitArchiveMode();
+}
+
+async function refreshArchivesChip(cwd) {
+  const chipWrap = document.getElementById('archives-chip-wrap');
+  const chip = document.getElementById('archives-chip');
+  if (!cwd) { chipWrap.style.display = 'none'; return; }
+
+  try {
+    const res = await fetch(`/api/archives?cwd=${encodeURIComponent(cwd)}`);
+    if (!res.ok) { chipWrap.style.display = 'none'; return; }
+    const archives = await res.json();
+    if (archives.length === 0) { chipWrap.style.display = 'none'; return; }
+
+    chipWrap.style.display = '';
+    chip.textContent = `${archives.length} prev`;
+    chip.title = `${archives.length} previous session${archives.length > 1 ? 's' : ''} for this project`;
+
+    const dropdown = document.getElementById('archives-dropdown');
+    dropdown.innerHTML = archives.map((a) => {
+      const date = new Date(a.lastUsed).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      return `<div class="archive-item" data-id="${a.id}">
+        <span class="archive-name">${a.name}</span>
+        <span class="archive-date">${date}</span>
+      </div>`;
+    }).join('');
+
+    dropdown.querySelectorAll('.archive-item').forEach((el) => {
+      el.onclick = () => {
+        dropdown.classList.add('hidden');
+        enterArchiveMode(el.dataset.id);
+      };
+    });
+  } catch { chipWrap.style.display = 'none'; }
+}
+
+async function enterArchiveMode(archiveSessionId) {
+  archiveMode = true;
+  archiveReturnSessionId = sessionUI.currentSessionId;
+
+  // Hide input, show banner
+  document.getElementById('input-area').style.display = 'none';
+  const banner = document.getElementById('archive-banner');
+  banner.style.display = '';
+
+  // Load archive history read-only
+  chat.messagesEl.innerHTML = '';
+  try {
+    const res = await fetch(`/api/history/${archiveSessionId}`);
+    if (res.ok) {
+      const history = await res.json();
+      if (Array.isArray(history)) {
+        // Render all entries (no cap — archives tend to be finite)
+        const RENDER_CAP = 100;
+        const offset = Math.max(0, history.length - RENDER_CAP);
+        for (let i = offset; i < history.length; i++) {
+          chat._renderHistoryEntry(history[i]);
+        }
+      }
+    }
+  } catch {}
+  chat.forceScrollToBottom();
+}
+
+function exitArchiveMode() {
+  archiveMode = false;
+  document.getElementById('input-area').style.display = '';
+  document.getElementById('archive-banner').style.display = 'none';
+
+  // Restore active session
+  if (archiveReturnSessionId) {
+    chat.switchSession(archiveReturnSessionId);
+    chat.loadHistory(archiveReturnSessionId);
+  }
+  archiveReturnSessionId = null;
+}
+
 // Register service worker with auto-update for iOS Safari.
 // iOS checks for SW updates very lazily, especially in PWA mode.
 // We force an update check every time the user returns to the app,
 // and auto-reload when a new SW takes control.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').then(reg => {
+  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
     // Force update check when user returns (critical for iOS Safari PWA)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') reg.update();

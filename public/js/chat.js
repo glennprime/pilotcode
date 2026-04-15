@@ -21,6 +21,11 @@ export class Chat {
     this.sessionCwd = ''; // working directory for resolving relative paths
     this._scrollKey = 'pilotcode_scroll_positions'; // persisted in sessionStorage
 
+    // DOM snapshot cache for instant session switching.
+    // Stores { dom, history, scrollTop, renderOffset, renderedIds, fileLinks, toolCards } per session.
+    this._sessionCache = new Map();
+    this._SESSION_CACHE_MAX = 15;
+
     // Callbacks for user message actions (wired by app.js)
     this.onResend = null; // (text) => void
     this.onEdit = null;   // (text) => void
@@ -264,6 +269,14 @@ export class Chat {
       const card = document.createElement('div');
       card.className = 'question-card';
 
+      // Dismiss button
+      const dismissBtn = document.createElement('button');
+      dismissBtn.className = 'question-dismiss';
+      dismissBtn.innerHTML = '&times;';
+      dismissBtn.title = 'Dismiss';
+      dismissBtn.onclick = () => card.remove();
+      card.appendChild(dismissBtn);
+
       if (q.header) {
         const header = document.createElement('div');
         header.className = 'question-header';
@@ -366,6 +379,12 @@ export class Chat {
   }
 
   handleSDKMessage(msg, onPermissionResponse) {
+    // Session guard: if the message has a session tag that doesn't match, discard it.
+    // This catches bleedover from buffer replay or broadcast races.
+    if (msg._fromSession && this.sessionId && msg._fromSession !== this.sessionId) {
+      return;
+    }
+
     // During buffer replay after reconnect, suppress rendering since
     // history was already loaded. Only let through result/busy/control messages.
     if (this.suppressReplay && (msg.type === 'assistant' || msg.type === 'user')) {
@@ -474,6 +493,7 @@ export class Chat {
         this.hideThinking();
         this.finishStreaming();
         this.setWorking(false);
+        if (window.__clearStopTimer) window.__clearStopTimer();
         if (msg.is_error && msg.result) {
           this.addSystemMessage(`Error: ${msg.result}`);
         }
@@ -888,11 +908,53 @@ export class Chat {
     this.isStreaming = false;
   }
 
+  _cacheCurrentSession() {
+    if (!this.sessionId) return;
+    // Snapshot current DOM and state
+    const fragment = document.createDocumentFragment();
+    while (this.messagesEl.firstChild) {
+      fragment.appendChild(this.messagesEl.firstChild);
+    }
+    this._sessionCache.set(this.sessionId, {
+      dom: fragment,
+      history: this.history,
+      scrollTop: this.messagesEl.scrollTop,
+      renderOffset: this._renderOffset || 0,
+      renderedIds: new Set(this.renderedMessageIds),
+      fileLinks: new Set(this.renderedFileLinks),
+    });
+    // Evict oldest if over limit
+    if (this._sessionCache.size > this._SESSION_CACHE_MAX) {
+      const oldest = this._sessionCache.keys().next().value;
+      this._sessionCache.delete(oldest);
+    }
+  }
+
+  _restoreFromCache(sessionId) {
+    const cached = this._sessionCache.get(sessionId);
+    if (!cached) return false;
+    this._sessionCache.delete(sessionId); // consume it
+    this.messagesEl.innerHTML = '';
+    this.messagesEl.appendChild(cached.dom);
+    this.history = cached.history;
+    this._renderOffset = cached.renderOffset;
+    this.renderedMessageIds = cached.renderedIds;
+    this.renderedFileLinks = cached.fileLinks;
+    requestAnimationFrame(() => {
+      this.messagesEl.scrollTop = cached.scrollTop;
+      this._updateScrollBtn();
+    });
+    return true;
+  }
+
   async switchSession(newSessionId) {
     // Save scroll position of the session we're leaving
     if (this.sessionId) {
       this._saveScrollPos(this.sessionId, this.messagesEl.scrollTop);
     }
+
+    // Cache current session's DOM for instant restore later
+    this._cacheCurrentSession();
 
     // Clear UI state synchronously first — before any await —
     // so server messages (session_rejoined, session_busy) that arrive
@@ -910,9 +972,16 @@ export class Chat {
     this.sessionId = newSessionId;
     this.history = [];
 
-    // Async operations: save old history, load new history.
-    // During these awaits, WebSocket messages (session_rejoined, session_busy)
-    // may fire and create a thinking element via showThinking().
+    // Try instant restore from DOM cache
+    if (newSessionId && this._restoreFromCache(newSessionId)) {
+      // DOM restored instantly — but check for new messages that arrived
+      // while we were away (the cache is a snapshot from when we left).
+      this._backfillFromServer(newSessionId);
+      this.saveHistory();
+      return;
+    }
+
+    // No cache — full load path
     await this.saveHistory();
 
     if (newSessionId) {
@@ -968,10 +1037,36 @@ export class Chat {
     } catch { /* offline, will save next time */ }
   }
 
+  /** After restoring from DOM cache, fetch server history and render any new entries. */
+  async _backfillFromServer(sessionId) {
+    try {
+      const res = await fetch(`/api/history/${sessionId}`);
+      if (!res.ok) return;
+      if (this.sessionId !== sessionId) return; // switched away during fetch
+      const serverHistory = await res.json();
+      if (!Array.isArray(serverHistory)) return;
+
+      // If server has more entries than our cached history, render the new ones
+      const cachedLen = this.history.length;
+      if (serverHistory.length > cachedLen) {
+        const newEntries = serverHistory.slice(cachedLen);
+        // Insert new entries BEFORE any thinking indicator
+        for (const entry of newEntries) {
+          this._renderHistoryEntry(entry);
+          this.history.push(entry);
+        }
+        this.scrollToBottom();
+        this.saveHistory();
+      }
+    } catch { /* offline */ }
+  }
+
   async loadHistory(sessionId) {
     try {
       const res = await fetch(`/api/history/${sessionId}`);
       if (!res.ok) return;
+      // Race guard: if user switched sessions during the fetch, discard the result.
+      if (this.sessionId !== sessionId) return;
       this.history = await res.json();
       if (!Array.isArray(this.history)) { this.history = []; return; }
 

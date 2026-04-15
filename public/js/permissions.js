@@ -95,7 +95,8 @@ export function renderQuestionCard(msg, onRespond) {
   const questions = msg.questions || [];
   const selections = {}; // { questionText: selectedAnswer }
 
-  let html = '';
+  // Dismiss button
+  let html = '<button class="question-dismiss" title="Dismiss">&times;</button>';
   for (const q of questions) {
     const header = q.header ? `<div class="question-header">${escapeHtml(q.header)}</div>` : '';
     html += `<div class="question-group">
@@ -108,7 +109,11 @@ export function renderQuestionCard(msg, onRespond) {
         ${opt.description ? `<div class="option-desc">${escapeHtml(opt.description)}</div>` : ''}
       </button>`;
     }
-    html += `</div></div>`;
+    html += `</div>
+      <div class="question-freetext">
+        <input type="text" class="question-freetext-input" placeholder="Or type your own answer..." data-question="${escapeHtml(q.question)}">
+      </div>
+    </div>`;
   }
 
   html += `<div class="question-actions">
@@ -117,10 +122,22 @@ export function renderQuestionCard(msg, onRespond) {
 
   card.innerHTML = html;
 
+  // Wire up dismiss
+  card.querySelector('.question-dismiss').onclick = () => card.remove();
+
   // Wire up option selection
+  const submitBtn = card.querySelector('.btn-submit-answers');
+  const updateSubmitState = () => {
+    const hasSelection = Object.values(selections).some(v => v);
+    submitBtn.disabled = !hasSelection;
+  };
+
   for (const group of card.querySelectorAll('.question-options')) {
     const qText = group.dataset.question;
     const isMulti = group.dataset.multi === 'true';
+    // Find the corresponding freetext input
+    const freetextInput = card.querySelector(`.question-freetext-input[data-question="${qText}"]`);
+
     for (const btn of group.querySelectorAll('.question-option')) {
       btn.onclick = () => {
         if (isMulti) {
@@ -132,13 +149,29 @@ export function renderQuestionCard(msg, onRespond) {
           btn.classList.add('selected');
           selections[qText] = btn.dataset.label;
         }
-        card.querySelector('.btn-submit-answers').disabled =
-          !Object.values(selections).some(v => v);
+        // Clear freetext when option selected
+        if (freetextInput) freetextInput.value = '';
+        updateSubmitState();
+      };
+    }
+
+    // Wire up freetext input
+    if (freetextInput) {
+      freetextInput.oninput = () => {
+        const val = freetextInput.value.trim();
+        if (val) {
+          // Deselect options when typing custom answer
+          group.querySelectorAll('.question-option').forEach(b => b.classList.remove('selected'));
+          selections[qText] = val;
+        } else {
+          delete selections[qText];
+        }
+        updateSubmitState();
       };
     }
   }
 
-  card.querySelector('.btn-submit-answers').onclick = () => {
+  submitBtn.onclick = () => {
     onRespond(selections);
     const actions = card.querySelector('.question-actions');
     actions.innerHTML = '<span style="color: var(--green); font-size: 12px; font-weight: 600;">Answered</span>';
@@ -146,6 +179,9 @@ export function renderQuestionCard(msg, onRespond) {
       b.disabled = true;
       b.style.pointerEvents = 'none';
     });
+    card.querySelectorAll('.question-freetext-input').forEach(i => { i.disabled = true; });
+    const dismissBtn = card.querySelector('.question-dismiss');
+    if (dismissBtn) dismissBtn.remove();
   };
 
   return card;
