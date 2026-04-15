@@ -86,11 +86,17 @@ const sessionMessageCounts = new Map<string, number>();
 const sessionContextTokens = new Map<string, number>();
 
 // Accumulate assistant text during streaming — saved to history on result.
-const pendingAssistantText = new Map<string, string>();
+// Within a single turn, Claude can cycle through multiple assistant→tool_use→assistant
+// sequences.  We track each turn segment separately so intermediate responses aren't lost.
+const pendingAssistantSegments = new Map<string, string[]>();
+// The latest text within the current segment (for detecting streaming vs new segment).
+const pendingAssistantLatest = new Map<string, string>();
 
 /** Get any in-progress assistant text that hasn't been saved to history yet (pre-result). */
 export function getPendingAssistantText(sessionId: string): string | undefined {
-  return pendingAssistantText.get(sessionId);
+  const segs = pendingAssistantSegments.get(sessionId);
+  if (!segs || segs.length === 0) return undefined;
+  return segs.join('\n\n');
 }
 
 // ── Persist session runtime state across server restarts ──
@@ -1103,22 +1109,40 @@ function ensureBroadcastWired(opts: BroadcastWireOptions): void {
       appendHistoryEntry(sessionId, { role: 'compact', text: 'Context compacted', preTokens });
     }
 
-    // Server-side history saving: accumulate assistant text during streaming,
-    // save only on result to avoid partial/duplicate entries.
+    // Server-side history saving: accumulate assistant text during streaming.
+    // Within one turn Claude can cycle assistant→tool_use→assistant multiple times.
+    // Each cycle is a "segment"; we detect a new segment when the incoming text
+    // doesn't extend the previous text (i.e. it's not just a longer streaming update).
     if (sessionId && msg.type === 'assistant' && (msg as any).message?.content) {
       const content = (msg as any).message.content;
       const textParts = Array.isArray(content)
         ? content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('')
         : typeof content === 'string' ? content : '';
       if (textParts) {
-        pendingAssistantText.set(sessionId, textParts);
+        const latest = pendingAssistantLatest.get(sessionId) || '';
+        const isStreaming = latest && textParts.startsWith(latest);
+        if (!pendingAssistantSegments.has(sessionId)) {
+          pendingAssistantSegments.set(sessionId, []);
+        }
+        const segs = pendingAssistantSegments.get(sessionId)!;
+        if (isStreaming || segs.length === 0) {
+          // Streaming update within current segment — replace last segment
+          if (segs.length === 0) segs.push(textParts);
+          else segs[segs.length - 1] = textParts;
+        } else {
+          // New segment (after tool use) — push a new entry
+          segs.push(textParts);
+        }
+        pendingAssistantLatest.set(sessionId, textParts);
       }
     }
     if (sessionId && msg.type === 'result') {
-      const pendingText = pendingAssistantText.get(sessionId);
-      if (pendingText) {
-        appendHistoryEntry(sessionId, { role: 'assistant', text: pendingText });
-        pendingAssistantText.delete(sessionId);
+      const segs = pendingAssistantSegments.get(sessionId);
+      if (segs && segs.length > 0) {
+        const fullText = segs.join('\n\n');
+        appendHistoryEntry(sessionId, { role: 'assistant', text: fullText });
+        pendingAssistantSegments.delete(sessionId);
+        pendingAssistantLatest.delete(sessionId);
       }
     }
 

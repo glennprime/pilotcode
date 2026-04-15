@@ -972,11 +972,11 @@ export class Chat {
     this.sessionId = newSessionId;
     this.history = [];
 
-    // Try instant restore from DOM cache
+    // Try instant restore from DOM cache.
+    // Don't fetch history here — session_rejoined / session_not_running
+    // will call loadHistory() with authoritative server data shortly.
+    // Fetching here races with that loadHistory() call.
     if (newSessionId && this._restoreFromCache(newSessionId)) {
-      // DOM restored instantly — but check for new messages that arrived
-      // while we were away (the cache is a snapshot from when we left).
-      this._backfillFromServer(newSessionId);
       this.saveHistory();
       return;
     }
@@ -1035,30 +1035,6 @@ export class Chat {
         body: JSON.stringify(this.history),
       });
     } catch { /* offline, will save next time */ }
-  }
-
-  /** After restoring from DOM cache, fetch server history and render any new entries. */
-  async _backfillFromServer(sessionId) {
-    try {
-      const res = await fetch(`/api/history/${sessionId}`);
-      if (!res.ok) return;
-      if (this.sessionId !== sessionId) return; // switched away during fetch
-      const serverHistory = await res.json();
-      if (!Array.isArray(serverHistory)) return;
-
-      // If server has more entries than our cached history, render the new ones
-      const cachedLen = this.history.length;
-      if (serverHistory.length > cachedLen) {
-        const newEntries = serverHistory.slice(cachedLen);
-        // Insert new entries BEFORE any thinking indicator
-        for (const entry of newEntries) {
-          this._renderHistoryEntry(entry);
-          this.history.push(entry);
-        }
-        this.scrollToBottom();
-        this.saveHistory();
-      }
-    } catch { /* offline */ }
   }
 
   async loadHistory(sessionId) {
