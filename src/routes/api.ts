@@ -195,6 +195,7 @@ export function createApiRouter(manager: SessionManager): Router {
   // Available models — update this list when Anthropic releases new models
   router.get('/api/models', requireAuth, (_req: Request, res: Response) => {
     res.json([
+      { id: 'claude-opus-4-7', name: 'Opus 4.7', tier: 'premium' },
       { id: 'claude-opus-4-6', name: 'Opus 4.6', tier: 'premium' },
       { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', tier: 'standard' },
       { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', tier: 'fast' },
