@@ -4,6 +4,7 @@ import { join } from 'path';
 
 export const PORT = parseInt(process.env.PILOTCODE_PORT || '3456', 10);
 export const DEFAULT_CWD = process.env.PILOTCODE_CWD || process.env.HOME || '/tmp';
+export const DEFAULT_MODEL = process.env.PILOTCODE_MODEL || 'claude-opus-4-7';
 export const DATA_DIR = join(import.meta.dirname, '..', 'data');
 export const IMAGES_DIR = join(DATA_DIR, 'images');
 export const SESSIONS_FILE = join(DATA_DIR, 'sessions.json');

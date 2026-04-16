@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { SessionManager } from '../claude/manager.js';
 import { ClaudeProcess } from '../claude/process.js';
-import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DATA_DIR } from '../config.js';
+import { getAuthToken, IMAGES_DIR, DEFAULT_CWD, DEFAULT_MODEL, DATA_DIR } from '../config.js';
 import type { ContentBlock, ImageBlock, SDKMessage } from '../claude/types.js';
 import { findValidSession, findSessionById } from '../claude/sessions.js';
 import { findSessionFile, readSessionFile, watchSessionFile } from '../claude/watcher.js';
@@ -603,7 +603,7 @@ function handleCreateSession(
 ): void {
   const cwd = msg.cwd || DEFAULT_CWD;
   const name = msg.name || 'New Session';
-  const model = msg.model || undefined;
+  const model = msg.model || DEFAULT_MODEL;
 
   sessionLog('CREATE', { name, cwd, model: model || 'default' });
   const proc = manager.createProcess({ cwd, model });
