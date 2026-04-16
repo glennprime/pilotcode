@@ -340,7 +340,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v131';
+  if (versionEl) versionEl.textContent = 'v132';
 }
 
 function setupInput() {
@@ -401,6 +401,52 @@ function setupInput() {
   };
 }
 
+// Chrome's Web Speech API doesn't auto-punctuate; rewrite spoken punctuation
+// words into the corresponding symbol. Applied to both interim and final so
+// the user sees the result as they speak.
+const VOICE_PUNCT_RULES = [
+  [/\bnew paragraph\b/gi, '\n\n'],
+  [/\bnew line\b/gi, '\n'],
+  [/\b(full stop|period)\b/gi, '.'],
+  [/\bcomma\b/gi, ','],
+  [/\bquestion mark\b/gi, '?'],
+  [/\bexclamation (mark|point)\b/gi, '!'],
+  [/\bsemicolon\b/gi, ';'],
+  [/\bcolon\b/gi, ':'],
+  [/\bellipsis\b/gi, '\u2026'],
+  [/\b(em )?dash\b/gi, '\u2014'],
+  [/\bhyphen\b/gi, '-'],
+  [/\bopen paren(thesis)?\b/gi, '('],
+  [/\bclose paren(thesis)?\b/gi, ')'],
+  [/\bopen brac(k)?et\b/gi, '['],
+  [/\bclose brac(k)?et\b/gi, ']'],
+  [/\bopen brace\b/gi, '{'],
+  [/\bclose brace\b/gi, '}'],
+  [/\b(open |left )?quote\b/gi, '"'],
+  [/\b(close |right )quote\b/gi, '"'],
+  [/\bapostrophe\b/gi, "'"],
+  [/\bslash\b/gi, '/'],
+  [/\bbackslash\b/gi, '\\'],
+  [/\bat sign\b/gi, '@'],
+  [/\bhash(tag)?\b/gi, '#'],
+  [/\bampersand\b/gi, '&'],
+  [/\bpercent( sign)?\b/gi, '%'],
+  [/\bdollar sign\b/gi, '$'],
+  [/\b(asterisk|star)\b/gi, '*'],
+];
+
+function applyVoicePunctuation(text) {
+  let out = text;
+  for (const [re, rep] of VOICE_PUNCT_RULES) out = out.replace(re, rep);
+  // Tighten whitespace around end-of-sentence punctuation: "hello , world" → "hello, world"
+  out = out.replace(/ +([.,;:!?])/g, '$1');
+  // "hello . world" got tightened above; now add space after if missing: "hello.world" → "hello. world"
+  out = out.replace(/([.,;:!?])(?=[A-Za-z])/g, '$1 ');
+  // Collapse runs of spaces (but keep newlines)
+  out = out.replace(/[ \t]{2,}/g, ' ');
+  return out;
+}
+
 function initVoiceDictation() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) return; // hide button on unsupported browsers
@@ -438,6 +484,8 @@ function initVoiceDictation() {
           interim += transcript;
         }
       }
+      final = applyVoicePunctuation(final);
+      interim = applyVoicePunctuation(interim);
       // Build text: original + finalized speech + interim (greyed via placeholder)
       input.value = textBeforeDictation + (textBeforeDictation && final ? ' ' : '') + final + (interim ? ' ' + interim : '');
       input.style.height = 'auto';
