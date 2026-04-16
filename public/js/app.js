@@ -340,7 +340,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v132';
+  if (versionEl) versionEl.textContent = 'v133';
 }
 
 function setupInput() {
@@ -453,25 +453,24 @@ function initVoiceDictation() {
 
   const btn = document.getElementById('mic-btn');
   btn.style.display = '';
+  btn.title = 'Voice dictation (or hold Ctrl+Space)';
 
   const input = document.getElementById('message-input');
   const sendBtn = document.getElementById('send-btn');
   let recognition = null;
   let listening = false;
   let textBeforeDictation = '';
+  let hadSpeech = false;
 
-  btn.onclick = () => {
-    if (listening) {
-      recognition.stop();
-      return;
-    }
-
+  function startRecognition(mode) {
+    if (listening) return;
     recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = navigator.language || 'en-US';
 
     textBeforeDictation = input.value;
+    hadSpeech = false;
 
     recognition.onresult = (e) => {
       let interim = '';
@@ -480,13 +479,13 @@ function initVoiceDictation() {
         const transcript = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
           final += transcript;
+          if (transcript.trim()) hadSpeech = true;
         } else {
           interim += transcript;
         }
       }
       final = applyVoicePunctuation(final);
       interim = applyVoicePunctuation(interim);
-      // Build text: original + finalized speech + interim (greyed via placeholder)
       input.value = textBeforeDictation + (textBeforeDictation && final ? ' ' : '') + final + (interim ? ' ' + interim : '');
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
@@ -496,23 +495,101 @@ function initVoiceDictation() {
     recognition.onstart = () => {
       listening = true;
       btn.classList.add('mic-active');
-      btn.title = 'Stop dictation';
+      btn.title = mode === 'ptt' ? 'Release Ctrl+Space to send — hold Ctrl 2s after Space to cancel' : 'Stop dictation';
     };
 
     recognition.onend = () => {
       listening = false;
       btn.classList.remove('mic-active');
-      btn.title = 'Voice dictation';
+      btn.title = 'Voice dictation (or hold Ctrl+Space)';
     };
 
     recognition.onerror = (e) => {
-      if (e.error !== 'aborted') {
-        console.warn('Speech recognition error:', e.error);
-      }
+      if (e.error !== 'aborted') console.warn('Speech recognition error:', e.error);
     };
 
     recognition.start();
+  }
+
+  function stopRecognition() {
+    if (!listening || !recognition) return;
+    try { recognition.stop(); } catch {}
+  }
+
+  // Button: toggle dictation
+  btn.onclick = () => {
+    if (listening) stopRecognition();
+    else { input.focus(); startRecognition('toggle'); }
   };
+
+  // ── Push-to-talk: hold Ctrl+Space ──
+  // Press: focus input + start mic.
+  // Release both keys within 2s of each other → send (if speech captured).
+  // Release Space but keep Ctrl held >2s → cancel send, keep text, cursor at end.
+  const CANCEL_HOLD_MS = 2000;
+  let pttActive = false;
+  let firstReleaseAt = 0;
+  let cancelTimer = null;
+
+  function pttCancel() {
+    pttActive = false;
+    firstReleaseAt = 0;
+    if (cancelTimer) { clearTimeout(cancelTimer); cancelTimer = null; }
+    stopRecognition();
+    input.focus();
+    input.selectionStart = input.selectionEnd = input.value.length;
+  }
+
+  function pttReset() {
+    pttActive = false;
+    firstReleaseAt = 0;
+    if (cancelTimer) { clearTimeout(cancelTimer); cancelTimer = null; }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    // Ignore keys typed inside contenteditable or when another dictation is already running via button
+    if (e.code === 'Space' && e.ctrlKey && !pttActive && !listening) {
+      // Only trigger if Ctrl is the ONLY modifier — avoids Ctrl+Shift+Space etc.
+      if (e.shiftKey || e.altKey || e.metaKey) return;
+      e.preventDefault();
+      pttActive = true;
+      firstReleaseAt = 0;
+      input.focus();
+      startRecognition('ptt');
+    }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    if (!pttActive) return;
+    const isSpace = e.code === 'Space';
+    const isCtrl = e.code === 'ControlLeft' || e.code === 'ControlRight';
+    if (!isSpace && !isCtrl) return;
+
+    if (!firstReleaseAt) {
+      // First of the two keys released — stop mic, arm cancel timer
+      firstReleaseAt = Date.now();
+      stopRecognition();
+      cancelTimer = setTimeout(() => {
+        // Second key still held after window → user wants to cancel
+        pttCancel();
+      }, CANCEL_HOLD_MS);
+    } else {
+      // Second key released within the window → send (if speech was captured)
+      const shouldSend = hadSpeech && input.value.trim().length > 0;
+      pttReset();
+      if (shouldSend) {
+        // Let final transcript events settle, then send
+        setTimeout(() => sendMessage(), 30);
+      } else {
+        // Silence or empty — keep focus, cursor at end
+        input.focus();
+        input.selectionStart = input.selectionEnd = input.value.length;
+      }
+    }
+  });
+
+  // If the window loses focus mid-PTT (alt-tab, screen lock), treat as cancel
+  window.addEventListener('blur', () => { if (pttActive) pttCancel(); });
 }
 
 function showNoSessionPrompt() {
