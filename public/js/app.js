@@ -340,7 +340,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v133';
+  if (versionEl) versionEl.textContent = 'v134';
 }
 
 function setupInput() {
@@ -453,7 +453,7 @@ function initVoiceDictation() {
 
   const btn = document.getElementById('mic-btn');
   btn.style.display = '';
-  btn.title = 'Voice dictation (or hold Ctrl+Space)';
+  btn.title = 'Voice dictation (or hold Ctrl+Shift)';
 
   const input = document.getElementById('message-input');
   const sendBtn = document.getElementById('send-btn');
@@ -495,13 +495,13 @@ function initVoiceDictation() {
     recognition.onstart = () => {
       listening = true;
       btn.classList.add('mic-active');
-      btn.title = mode === 'ptt' ? 'Release Ctrl+Space to send — hold Ctrl 2s after Space to cancel' : 'Stop dictation';
+      btn.title = mode === 'ptt' ? 'Release Ctrl+Shift to send — hold one key 2s after the other to cancel' : 'Stop dictation';
     };
 
     recognition.onend = () => {
       listening = false;
       btn.classList.remove('mic-active');
-      btn.title = 'Voice dictation (or hold Ctrl+Space)';
+      btn.title = 'Voice dictation (or hold Ctrl+Shift)';
     };
 
     recognition.onerror = (e) => {
@@ -522,14 +522,19 @@ function initVoiceDictation() {
     else { input.focus(); startRecognition('toggle'); }
   };
 
-  // ── Push-to-talk: hold Ctrl+Space ──
-  // Press: focus input + start mic.
-  // Release both keys within 2s of each other → send (if speech captured).
-  // Release Space but keep Ctrl held >2s → cancel send, keep text, cursor at end.
+  // ── Push-to-talk: hold Ctrl+Shift (both modifiers, nothing else) ──
+  // Arm after both held together for ARM_DELAY_MS (to not trigger on Ctrl+Shift+letter combos).
+  // Release either key → 2s window for the other; release both within window → send.
+  // Hold the remaining key past the window → cancel (keep text, cursor at end).
+  // Any third key during arm or active → cancel.
   const CANCEL_HOLD_MS = 2000;
+  const ARM_DELAY_MS = 150;
   let pttActive = false;
   let firstReleaseAt = 0;
   let cancelTimer = null;
+  let armTimer = null;
+  let ctrlDown = false;
+  let shiftDown = false;
 
   function pttCancel() {
     pttActive = false;
@@ -546,24 +551,52 @@ function initVoiceDictation() {
     if (cancelTimer) { clearTimeout(cancelTimer); cancelTimer = null; }
   }
 
+  function disarmPTT() {
+    if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+  }
+
   document.addEventListener('keydown', (e) => {
-    // Ignore keys typed inside contenteditable or when another dictation is already running via button
-    if (e.code === 'Space' && e.ctrlKey && !pttActive && !listening) {
-      // Only trigger if Ctrl is the ONLY modifier — avoids Ctrl+Shift+Space etc.
-      if (e.shiftKey || e.altKey || e.metaKey) return;
-      e.preventDefault();
-      pttActive = true;
-      firstReleaseAt = 0;
-      input.focus();
-      startRecognition('ptt');
+    const isCtrl = e.code === 'ControlLeft' || e.code === 'ControlRight';
+    const isShift = e.code === 'ShiftLeft' || e.code === 'ShiftRight';
+
+    if (isCtrl) ctrlDown = true;
+    if (isShift) shiftDown = true;
+
+    // Third key while arming or active → abort (user is doing Ctrl+Shift+letter)
+    if (!isCtrl && !isShift) {
+      if (armTimer) disarmPTT();
+      if (pttActive) pttCancel();
+      return;
+    }
+
+    // Both modifiers held, nothing else → arm (after small delay to filter out shortcuts)
+    if (!pttActive && !listening && !armTimer && ctrlDown && shiftDown && !e.altKey && !e.metaKey) {
+      armTimer = setTimeout(() => {
+        armTimer = null;
+        if (!ctrlDown || !shiftDown || pttActive || listening) return;
+        pttActive = true;
+        firstReleaseAt = 0;
+        input.focus();
+        startRecognition('ptt');
+      }, ARM_DELAY_MS);
     }
   });
 
   document.addEventListener('keyup', (e) => {
-    if (!pttActive) return;
-    const isSpace = e.code === 'Space';
     const isCtrl = e.code === 'ControlLeft' || e.code === 'ControlRight';
-    if (!isSpace && !isCtrl) return;
+    const isShift = e.code === 'ShiftLeft' || e.code === 'ShiftRight';
+
+    if (isCtrl) ctrlDown = false;
+    if (isShift) shiftDown = false;
+
+    // Released before arm fired → cancel the arm
+    if (armTimer && (isCtrl || isShift)) {
+      disarmPTT();
+      return;
+    }
+
+    if (!pttActive) return;
+    if (!isCtrl && !isShift) return;
 
     if (!firstReleaseAt) {
       // First of the two keys released — stop mic, arm cancel timer
@@ -589,7 +622,12 @@ function initVoiceDictation() {
   });
 
   // If the window loses focus mid-PTT (alt-tab, screen lock), treat as cancel
-  window.addEventListener('blur', () => { if (pttActive) pttCancel(); });
+  window.addEventListener('blur', () => {
+    ctrlDown = false;
+    shiftDown = false;
+    disarmPTT();
+    if (pttActive) pttCancel();
+  });
 }
 
 function showNoSessionPrompt() {

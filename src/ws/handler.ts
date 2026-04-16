@@ -77,6 +77,40 @@ const sessionBusyStates = new Map<string, SessionBusyState>();
 // Used to decide whether to tell Claude to continue or wait on resume.
 const sessionExitWasBusy = new Map<string, boolean>();
 
+// De-dup recent resume prompts per session to prevent double-prompts from
+// races between rapid reconnects (observed in session 0237d061: two resume
+// prompts sent back-to-back caused Claude to resume phantom work).
+const recentResumePrompts = new Map<string, number>();
+const RESUME_DEDUP_MS = 30000;
+
+function sendResumePrompt(
+  proc: ClaudeProcess,
+  sessionId: string,
+  prompt: string,
+  reason: string
+): boolean {
+  const now = Date.now();
+  const lastSent = recentResumePrompts.get(sessionId);
+  if (lastSent && now - lastSent < RESUME_DEDUP_MS) {
+    sessionLog('RESUME_DEDUPED', { sessionId, reason, elapsedMs: now - lastSent });
+    return false;
+  }
+  recentResumePrompts.set(sessionId, now);
+  // Opportunistic cleanup of stale entries
+  for (const [sid, ts] of recentResumePrompts) {
+    if (now - ts > RESUME_DEDUP_MS * 2) recentResumePrompts.delete(sid);
+  }
+  sessionLog('RESUME_PROMPT_SENT', { sessionId, reason, promptPreview: prompt.slice(0, 80) });
+  proc.sendMessage(prompt);
+  return true;
+}
+
+// Neutral prompt: safe for all resume branches (busy/idle/no-state/crash/external).
+// Claude's own context auto-compaction can make "continue where you left off"
+// point to phantom summarized work; always let the user drive continuation.
+const RESUME_PROMPT_NEUTRAL =
+  'Session resumed. Wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.';
+
 // Track user-turn count per session (in-memory, seeded on first access).
 // Only counts 'user' role entries so the badge reflects actual conversation turns,
 // not the many assistant streaming chunks that inflate total history length.
@@ -847,18 +881,10 @@ function handleResumeSession(
       // - undefined: no data (server restarted, lost state) → let Claude decide
       const wasBusy = sessionExitWasBusy.get(sessionId);
       sessionExitWasBusy.delete(sessionId);
-      if (wasBusy === true) {
-        sessionLog('RESUME_CONTINUE', { sessionId: validId, reason: 'was_busy_at_exit' });
-        proc.sendMessage('The session was interrupted. Continue where you left off.');
-      } else if (wasBusy === false) {
-        sessionLog('RESUME_WAIT', { sessionId: validId, reason: 'was_idle_at_exit' });
-        proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
-      } else {
-        // No exit state data — e.g. after server restart. Let Claude decide
-        // based on its conversation history rather than guessing wrong.
-        sessionLog('RESUME_AUTO', { sessionId: validId, reason: 'no_exit_state' });
-        proc.sendMessage('Session resumed. Check your conversation history: if you were in the middle of a task, continue where you left off. If you had completed your work or were waiting for input, acknowledge briefly and wait for instructions.');
-      }
+      const reason = wasBusy === true ? 'was_busy_at_exit'
+        : wasBusy === false ? 'was_idle_at_exit'
+        : 'no_exit_state';
+      sendResumePrompt(proc, validId, RESUME_PROMPT_NEUTRAL, reason);
     }
   } else {
     // No valid session found — start fresh in the same cwd with same model
@@ -956,7 +982,7 @@ function handleConnectExternalSession(
     replacesSessionId: sessionId, setCurrent, originWs: ws,
   });
 
-  proc.sendMessage('Session resumed. Acknowledge briefly and wait for the user\'s next instruction. Do not continue any previous work unless the user explicitly asks.');
+  sendResumePrompt(proc, validId, RESUME_PROMPT_NEUTRAL, 'connect_external');
 }
 
 function handleRejoinSession(
@@ -1509,8 +1535,10 @@ function handleProcessClose(
         });
 
         // Claude CLI (2.1.49+) won't emit system init until first stdin message.
-        // The session crashed mid-work, so tell Claude to continue.
-        newProc.sendMessage('The session crashed and was auto-resumed. Continue where you left off.');
+        // Use neutral prompt so Claude doesn't resume phantom work (see session
+        // 0237d061: "Continue where you left off" after CLI auto-compaction
+        // caused Claude to pick up ancient summarized work).
+        sendResumePrompt(newProc, sessionId!, RESUME_PROMPT_NEUTRAL, 'crash_auto_resume');
       }, delay);
       return;
     }
