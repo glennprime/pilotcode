@@ -172,6 +172,7 @@ function showApp() {
     _draftTimer = setTimeout(saveDraft, 500);
   };
   window._saveDraftDebounced = saveDraftDebounced;
+  window._saveDraft = saveDraft;
   const loadDraft = (sid) => {
     const input = document.getElementById('message-input');
     const drafts = JSON.parse(localStorage.getItem('pilotcode_drafts') || '{}');
@@ -339,7 +340,7 @@ function showApp() {
 
   // Show app version (service worker cache name)
   const versionEl = document.getElementById('app-version');
-  if (versionEl) versionEl.textContent = 'v130';
+  if (versionEl) versionEl.textContent = 'v131';
 }
 
 function setupInput() {
@@ -553,6 +554,9 @@ function doSend(text, images) {
   inputEl.style.height = 'auto';
   inputEl.blur(); // release focus so Ctrl+Arrow keys work for session navigation
   document.getElementById('send-btn').disabled = true;
+  // Purge any queued/debounced draft for this session so the sent text doesn't
+  // reappear in the input box next time we return to this session.
+  if (window._saveDraft) window._saveDraft();
 
   imageHandler.clear();
   chat.showThinking('Thinking...');

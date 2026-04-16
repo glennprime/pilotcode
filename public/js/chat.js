@@ -936,6 +936,11 @@ export class Chat {
     this._sessionCache.delete(sessionId); // consume it
     this.messagesEl.innerHTML = '';
     this.messagesEl.appendChild(cached.dom);
+    // Drop any stale spinner captured in the snapshot. `this.thinkingEl`
+    // was cleared before restore, so a cached .thinking would be an orphan
+    // that loadHistory() doesn't clean up. If the session is truly busy,
+    // session_busy/session_rejoined will re-trigger showThinking().
+    this.messagesEl.querySelectorAll('.thinking').forEach((el) => el.remove());
     this.history = cached.history;
     this._renderOffset = cached.renderOffset;
     this.renderedMessageIds = cached.renderedIds;
